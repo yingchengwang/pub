@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.22
+// @version      3.0.23
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -3600,30 +3600,79 @@
                     </div>
                 `;
                     statusEl.querySelector('#goto-update-btn').onclick = () => {
-                        // 先显示确认对话框
-                        const confirmed = confirm(
-                            `即将打开脚本安装页面\n\n` +
-                            `请在新标签页中点击「安装」更新脚本\n` +
-                            `更新完成后，请刷新当前页面\n\n` +
-                            `是否继续？`
-                        );
-                        if (!confirmed) return;
-                        // 隐藏更新提示点
-                        const dot = document.getElementById('update-dot');
-                        if (dot) dot.style.display = 'none';
-                        // 显示持久化的刷新提示
+                        // 显示确认模态框
                         statusEl.innerHTML = `
-                        <div style="padding:20px;background:#fffaf0;border-radius:8px;border:1px solid #fbd38d;">
-                            <div style="font-size:14px;font-weight:600;color:#744210;margin-bottom:8px;">⚡ 请刷新页面</div>
-                            <div style="font-size:13px;color:#744210;margin-bottom:12px;">正在打开脚本安装页面...</div>
-                            <ol style="font-size:13px;color:#744210;margin:0;padding-left:20px;line-height:1.6;">
-                                <li>在新标签页中点击「安装」更新脚本</li>
-                                <li>更新完成后，刷新当前页面</li>
-                            </ol>
+                        <div style="padding:24px;background:#fffaf0;border-radius:12px;border:2px solid #f6ad55;">
+                            <div style="font-size:16px;font-weight:700;color:#9c4221;margin-bottom:6px;display:flex;align-items:center;gap:8px;">
+                                <span style="font-size:20px;">⚡</span>
+                                <span>确认更新脚本</span>
+                            </div>
+                            <div style="font-size:13px;color:#9c4221;margin-bottom:20px;opacity:0.9;">
+                                即将打开脚本安装页面
+                            </div>
+                            <div style="background:#fff;border-radius:8px;padding:16px;margin-bottom:20px;border:1px dashed #f6ad55;">
+                                <div style="display:flex;align-items:flex-start;margin-bottom:14px;">
+                                    <div style="flex-shrink:0;width:24px;height:24px;background:#ed8936;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-right:12px;">1</div>
+                                    <div style="flex:1;font-size:14px;color:#2d3748;line-height:1.6;">
+                                        在新标签页中点击
+                                        <span style="background:#fed7e2;color:#c53030;padding:2px 8px;border-radius:4px;font-weight:600;">「Override」</span>
+                                        更新脚本
+                                    </div>
+                                </div>
+                                <div style="display:flex;align-items:flex-start;">
+                                    <div style="flex-shrink:0;width:24px;height:24px;background:#ed8936;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-right:12px;">2</div>
+                                    <div style="flex:1;font-size:14px;color:#2d3748;line-height:1.6;">
+                                        更新完成后，请
+                                        <span style="background:#feebc8;color:#9c4221;padding:2px 8px;border-radius:4px;font-weight:700;text-shadow:0 1px 1px rgba(0,0,0,0.1);">刷新页面</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display:flex;justify-content:center;gap:12px;">
+                                <button id="cancel-update-btn" style="padding:10px 24px;border:1px solid #cbd5e0;background:#fff;color:#4a5568;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.2s;">取消</button>
+                                <button id="confirm-update-btn" style="padding:10px 24px;border:none;background:#ed8936;color:white;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 4px rgba(237,137,54,0.3);">确认更新</button>
+                            </div>
                         </div>
                     `;
-                        // 打开油猴界面
-                        GM_openInTab(result.scriptUrl, { active: true });
+                        // 取消按钮：恢复原界面
+                        statusEl.querySelector('#cancel-update-btn').onclick = () => {
+                            statusEl.innerHTML = `
+                            <div style="padding:16px;background:#f0fff4;border-radius:8px;border:1px solid #9ae6b4;margin-bottom:16px;">
+                                <div style="font-size:14px;font-weight:600;color:#22543d;margin-bottom:8px;">✓ 发现新版本！</div>
+                                <div style="font-size:13px;color:#2f855a;">
+                                    <div>当前版本：<strong>v${currentVersion}</strong></div>
+                                    <div>最新版本：<strong>v${result.latest}</strong></div>
+                                </div>
+                            </div>
+                            <div style="padding:12px;background:#ebf8ff;border-radius:8px;border:1px solid #90cdf4;margin-bottom:16px;">
+                                <div style="font-size:13px;font-weight:600;color:#2c5282;margin-bottom:6px;">📝 更新内容：</div>
+                                <div style="font-size:13px;color:#2a4365;white-space:pre-line;">${result.changelog || '详见更新日志'}</div>
+                            </div>
+                            <div style="display:flex;justify-content:center;gap:10px;">
+                                <button id="goto-update-btn" style="padding:8px 20px;border:none;background:#48bb78;color:white;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">立即更新</button>
+                            </div>
+                        `;
+                            // 重新绑定点击事件
+                            statusEl.querySelector('#goto-update-btn').onclick = arguments.callee;
+                        };
+                        // 确认按钮：执行更新
+                        statusEl.querySelector('#confirm-update-btn').onclick = () => {
+                            // 隐藏更新提示点
+                            const dot = document.getElementById('update-dot');
+                            if (dot) dot.style.display = 'none';
+                            // 显示持久化的刷新提示
+                            statusEl.innerHTML = `
+                            <div style="padding:20px;background:#fffaf0;border-radius:8px;border:1px solid #fbd38d;">
+                                <div style="font-size:14px;font-weight:600;color:#744210;margin-bottom:8px;">⚡ 请刷新页面</div>
+                                <div style="font-size:13px;color:#744210;margin-bottom:12px;">正在打开脚本安装页面...</div>
+                                <ol style="font-size:13px;color:#744210;margin:0;padding-left:20px;line-height:1.6;">
+                                    <li>在新标签页中点击「安装」更新脚本</li>
+                                    <li>更新完成后，刷新当前页面</li>
+                                </ol>
+                            </div>
+                        `;
+                            // 打开油猴界面
+                            GM_openInTab(result.scriptUrl, { active: true });
+                        };
                     };
                 } else {
                     // 已是最新版本，隐藏绿点
@@ -3682,19 +3731,22 @@
                     const statusColor = wf.hasUpdate ? '#48bb78' : (wf.isInstalled ? '#4299e1' : '#718096');
                     const statusText = wf.hasUpdate ? '有更新' : (wf.isInstalled ? '已安装' : '未安装');
                     const buttonText = wf.hasUpdate ? '更新' : (wf.isInstalled ? '重新安装' : '安装');
-                    const rowStyle = wf.hasUpdate ? 'background:#f0fff4;' : '';
+                    const buttonColor = wf.hasUpdate ? '#48bb78' : '#4299e1';
+                    const rowStyle = wf.hasUpdate ? 'background:#f0fff4;border-color:#9ae6b4;' : '';
 
                     return `
-                    <div style="padding:12px;margin-bottom:8px;border-radius:8px;border:1px solid #e2e8f0;${rowStyle}">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <div style="font-size:14px;font-weight:600;color:#1a202c;">${escapeHtml(wf.name)}</div>
+                    <div style="display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:8px;border-radius:8px;border:1px solid #e2e8f0;${rowStyle}">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-size:14px;font-weight:600;color:#1a202c;margin-bottom:4px;">${escapeHtml(wf.name)}</div>
+                            <div style="font-size:12px;color:#718096;">
+                                云端 v${wf.version}${wf.localVersion ? ` | 本地 v${wf.localVersion}` : ''}
+                            </div>
+                            ${wf.changelog ? `<div style="font-size:12px;color:#4a5568;margin-top:4px;white-space:pre-line;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(wf.changelog)}</div>` : ''}
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
                             <span style="font-size:12px;padding:2px 8px;border-radius:4px;background:${statusColor}20;color:${statusColor};border:1px solid ${statusColor}40;">${statusText}</span>
+                            <button class="download-workflow-btn" data-name="${escapeHtml(wf.name)}" style="padding:6px 14px;border:none;background:${buttonColor};color:white;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;transition:background 0.15s;white-space:nowrap;">${buttonText}</button>
                         </div>
-                        <div style="font-size:12px;color:#718096;margin-bottom:8px;">
-                            云端版本：<strong>v${wf.version}</strong>${wf.localVersion ? ` | 本地版本：v${wf.localVersion}` : ''}
-                        </div>
-                        ${wf.changelog ? `<div style="font-size:12px;color:#4a5568;margin-bottom:8px;white-space:pre-line;">${escapeHtml(wf.changelog)}</div>` : ''}
-                        <button class="download-workflow-btn" data-name="${escapeHtml(wf.name)}" style="padding:6px 16px;border:none;background:${wf.hasUpdate ? '#48bb78' : '#4299e1'};color:white;border-radius:6px;font-size:12px;cursor:pointer;transition:background 0.15s;">${buttonText}</button>
                     </div>
                 `;
                 }).join('');
@@ -4612,6 +4664,25 @@
             window.wfWorkflowUpdate = true;
         }
     });
+
+    // 定时检查更新（每30分钟）
+    const AUTO_CHECK_INTERVAL = 30 * 60 * 1000; // 30分钟
+    setInterval(() => {
+        console.log('[AutoCheck] 开始定时检查更新...');
+        checkUpdate().then(result => {
+            if (result && result.hasUpdate) {
+                window.wfHasUpdate = true;
+                console.log('[AutoCheck] 发现脚本更新');
+            }
+        });
+        checkWorkflowUpdate().then(result => {
+            if (result && result.hasUpdate) {
+                window.wfWorkflowUpdate = true;
+                console.log('[AutoCheck] 发现有工作流更新');
+            }
+        });
+    }, AUTO_CHECK_INTERVAL);
+    console.log(`[AutoCheck] 定时检查已启用，间隔: ${AUTO_CHECK_INTERVAL / 1000 / 60} 分钟`);
 
     // 调试辅助函数：在控制台调用 wf.clearUpdateCheck() 来清除更新检查时间
     // 使用 unsafeWindow 将函数暴露到页面全局作用域，使其可在浏览器控制台中访问
