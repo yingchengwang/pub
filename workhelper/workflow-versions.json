@@ -18,7 +18,7 @@
     "我的账号登录流程-整合版": {
       "version": "2",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-login.json",
-      "changelog": "- 初始版本"
+      "changelog": "- 请注意替换自己的账号密码"
     }
   }
 }

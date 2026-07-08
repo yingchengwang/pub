@@ -252,10 +252,11 @@
         }
 
         #workflow-panel .wf-btn-start {
-            background: #48bb78;
+            background: #2f855a;
             color: white;
+            font-weight: 600;
         }
-        #workflow-panel .wf-btn-start:hover { background: #38a169; }
+        #workflow-panel .wf-btn-start:hover { background: #276749; }
 
         #workflow-panel .wf-btn-stop {
             background: #fc8181;
@@ -264,22 +265,22 @@
         #workflow-panel .wf-btn-stop:hover { background: #f56565; }
 
         #workflow-panel .wf-btn-reset {
-            background: #fed7d7;
+            background: #ffe5e5;
             color: #c53030;
         }
-        #workflow-panel .wf-btn-reset:hover { background: #feb2b2; }
+        #workflow-panel .wf-btn-reset:hover { background: #ffc8c8; }
 
         #workflow-panel .wf-btn-skip {
-            background: #fefcbf;
+            background: #fff9db;
             color: #975a16;
         }
-        #workflow-panel .wf-btn-skip:hover { background: #fef08a; }
+        #workflow-panel .wf-btn-skip:hover { background: #ffec99; }
 
         #workflow-panel .wf-btn-desc {
-            background: #e9d8fd;
+            background: #f3e8ff;
             color: #553c9a;
         }
-        #workflow-panel .wf-btn-desc:hover { background: #d6bcfa; }
+        #workflow-panel .wf-btn-desc:hover { background: #e0d4ff; }
 
         /* User action waiting */
         #workflow-panel .wf-user-action {
