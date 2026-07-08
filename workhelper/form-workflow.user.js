@@ -12,6 +12,10 @@
 // @grant        GM_setValue
 // @grant        GM_notification
 // @grant        GM_openInTab
+// @grant        GM_xmlhttpRequest
+// @grant        GM_deleteValue
+// @grant        unsafeWindow
+// @connect      yingchengwang.github.io
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -2959,6 +2963,314 @@
         return;
     }
 
+    /**
+     * 自动更新检查模块
+     * 每天检查一次 GitHub Pages 上的 version.json，发现新版本时提醒用户
+     */
+
+    // ⚠️ 需要配置：将这些 URL 改为你的实际地址
+    const CONFIG = {
+        // GitHub Pages 上的 version.json 地址
+        versionUrl: 'https://yingchengwang.github.io/pub/workhelper/version.json',
+
+        // 脚本主页（用户点击"更新"时打开的页面）
+        scriptUrl: 'https://yingchengwang.github.io/pub/workhelper/form-workflow.user.js',
+
+        // 工作流版本信息地址（GitHub Pages 上的 workflow-versions.json）
+        workflowVersionsUrl: 'https://yingchengwang.github.io/pub/workhelper/workflow-versions.json',
+
+        // 检查间隔（毫秒）：24小时 = 86400000
+        checkInterval: 24 * 60 * 60 * 1000,
+    };
+
+    // 存储键名
+    const KEYS = {
+        lastCheck: 'updater_lastCheck',
+        dismissedVersion: 'updater_dismissedVersion',
+        workflowLastCheck: 'workflow_updater_lastCheck',
+    };
+
+    /**
+     * 使用 GM_xmlhttpRequest 获取 JSON（绕过 CSP 限制）
+     */
+    function fetchJson(url) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                onload: (response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        try {
+                            const data = JSON.parse(response.responseText);
+                            resolve(data);
+                        } catch (e) {
+                            reject(new Error(`解析 JSON 失败: ${e.message}`));
+                        }
+                    } else {
+                        reject(new Error(`HTTP ${response.status}`));
+                    }
+                },
+                onerror: (e) => {
+                    reject(new Error('网络请求失败'));
+                },
+                ontimeout: () => {
+                    reject(new Error('请求超时'));
+                },
+                timeout: 10000
+            });
+        });
+    }
+
+    /**
+     * 手动检查更新（返回结果给 UI 显示）
+     * @returns {Promise<object>}
+     */
+    async function manualCheckUpdate() {
+        const currentVersion = getCurrentVersion();
+
+        try {
+            const data = await fetchJson(CONFIG.versionUrl);
+
+            return {
+                hasUpdate: isNewer(data.version, currentVersion),
+                current: currentVersion,
+                latest: data.version,
+                changelog: data.changelog,
+                scriptUrl: CONFIG.scriptUrl
+            };
+        } catch (e) {
+            throw new Error(`检查更新失败: ${e.message}`);
+        }
+    }
+
+    /**
+     * 自动检查是否有新版本可用（后台静默检查）
+     * @returns {Promise<object>} 返回检查结果 { hasUpdate: boolean, latest: string, current: string, changelog: string, scriptUrl: string }
+     */
+    async function checkUpdate() {
+        const lastCheck = GM_getValue(KEYS.lastCheck, 0);
+        const now = Date.now();
+        const currentVersion = getCurrentVersion();
+
+        console.log(`[Updater] 开始检查更新，当前版本: ${currentVersion}`);
+        console.log(`[Updater] 上次检查时间: ${new Date(lastCheck).toLocaleString()}`);
+        console.log(`[Updater] 当前时间: ${new Date(now).toLocaleString()}`);
+        console.log(`[Updater] 距离上次检查: ${Math.floor((now - lastCheck) / 1000 / 60)} 分钟`);
+        console.log(`[Updater] 检查间隔: ${CONFIG.checkInterval / 1000 / 60} 分钟`);
+
+        // 未到检查时间
+        if (now - lastCheck < CONFIG.checkInterval) {
+            console.log(`[Updater] 未到检查时间，跳过本次检查`);
+            // 即使不到检查时间，也返回是否有未处理的更新
+            const dismissed = GM_getValue(KEYS.dismissedVersion, '');
+            console.log(`[Updater] 已忽略版本: ${dismissed || '无'}`);
+            return { hasUpdate: false, current: currentVersion };
+        }
+
+        // 更新检查时间
+        GM_setValue(KEYS.lastCheck, now);
+        console.log(`[Updater] 开始请求版本信息: ${CONFIG.versionUrl}`);
+
+        try {
+            const data = await fetchJson(CONFIG.versionUrl);
+            console.log(`[Updater] 获取到版本信息:`, data);
+
+            // 检查是否是新版本
+            if (isNewer(data.version, currentVersion)) {
+                console.log(`[Updater] 版本比较: ${data.version} > ${currentVersion} (有新版本)`);
+                // 检查用户是否已忽略此版本
+                const dismissed = GM_getValue(KEYS.dismissedVersion, '');
+                if (dismissed === data.version) {
+                    console.log(`[Updater] 版本 ${data.version} 已被用户忽略`);
+                    return { hasUpdate: false, current: currentVersion };
+                }
+
+                // 静默提醒：通过 UI 标记而不是弹窗
+                console.log(`[Updater] 发现新版本 ${data.version}`);
+                const result = {
+                    hasUpdate: true,
+                    latest: data.version,
+                    current: currentVersion,
+                    changelog: data.changelog,
+                    scriptUrl: CONFIG.scriptUrl
+                };
+                // 通知 UI 显示更新提示
+                if (updateCallback) {
+                    updateCallback(result);
+                }
+                return result;
+            } else {
+                console.log(`[Updater] 已是最新版本 ${currentVersion}`);
+                return { hasUpdate: false, current: currentVersion };
+            }
+        } catch (e) {
+            console.error('[Updater] 检查更新失败:', e.message);
+            return { hasUpdate: false, error: e.message };
+        }
+    }
+
+    /**
+     * 设置有新版本可用的回调（用于通知 UI）
+     */
+    let updateCallback = null;
+    function setUpdateCallback(callback) {
+        updateCallback = callback;
+    }
+
+    /**
+     * 检查工作流是否有新版本
+     * @returns {Promise<object>} 返回检查结果 { hasUpdate: boolean, workflows: array }
+     */
+    async function checkWorkflowUpdate() {
+        const lastCheck = GM_getValue(KEYS.workflowLastCheck, 0);
+        const now = Date.now();
+
+        console.log(`[WorkflowUpdater] 开始检查工作流更新`);
+        console.log(`[WorkflowUpdater] 上次检查时间: ${new Date(lastCheck).toLocaleString()}`);
+
+        // 未到检查时间，跳过
+        if (now - lastCheck < CONFIG.checkInterval) {
+            console.log(`[WorkflowUpdater] 未到检查时间，跳过本次检查`);
+            return { hasUpdate: false, workflows: [] };
+        }
+
+        // 更新检查时间
+        GM_setValue(KEYS.workflowLastCheck, now);
+
+        try {
+            const data = await fetchJson(CONFIG.workflowVersionsUrl);
+            console.log(`[WorkflowUpdater] 获取到工作流版本信息:`, data);
+
+            // 获取本地存储的工作流列表
+            const localWorkflows = GM_getValue('workflow_list', []);
+            if (!localWorkflows || localWorkflows.length === 0) {
+                console.log(`[WorkflowUpdater] 没有本地工作流`);
+                return { hasUpdate: false, workflows: [] };
+            }
+
+            // 检查哪些工作流有更新（使用工作流名称作为标识）
+            const updatedWorkflows = [];
+            localWorkflows.forEach(localWf => {
+                const remoteInfo = data.workflows?.[localWf.name];
+                if (remoteInfo && isNewer(remoteInfo.version, localWf.version || '0')) {
+                    updatedWorkflows.push({
+                        id: localWf.id,
+                        name: localWf.name,
+                        currentVersion: localWf.version,
+                        latestVersion: remoteInfo.version,
+                        downloadUrl: remoteInfo.url,
+                        changelog: remoteInfo.changelog
+                    });
+                    console.log(`[WorkflowUpdater] 工作流「${localWf.name}」有更新: ${localWf.version} -> ${remoteInfo.version}`);
+                }
+            });
+
+            if (updatedWorkflows.length > 0) {
+                console.log(`[WorkflowUpdater] 发现 ${updatedWorkflows.length} 个工作流有更新`);
+                const result = {
+                    hasUpdate: true,
+                    workflows: updatedWorkflows
+                };
+                // 通知 UI 显示更新提示
+                if (updateCallback) {
+                    updateCallback(result);
+                }
+                return result;
+            }
+
+            console.log(`[WorkflowUpdater] 所有工作流已是最新版本`);
+            return { hasUpdate: false, workflows: [] };
+        } catch (e) {
+            console.error('[WorkflowUpdater] 检查工作流更新失败:', e.message);
+            return { hasUpdate: false, workflows: [], error: e.message };
+        }
+    }
+
+    /**
+     * 获取云端工作流列表（用于 UI 展示）
+     * @returns {Promise<object>} 返回云端工作流列表
+     */
+    async function getRemoteWorkflows() {
+        try {
+            const data = await fetchJson(CONFIG.workflowVersionsUrl);
+            // 获取本地工作流列表
+            const localWorkflows = GM_getValue('workflow_list', []);
+
+            // 为每个云端工作流添加本地版本信息
+            const workflows = Object.entries(data.workflows || {}).map(([name, info]) => {
+                const localWf = localWorkflows.find(w => w.name === name);
+                return {
+                    name,
+                    version: info.version,
+                    url: info.url,
+                    changelog: info.changelog,
+                    localVersion: localWf?.version || null,
+                    hasUpdate: localWf && isNewer(info.version, localWf.version || '0'),
+                    isInstalled: !!localWf
+                };
+            });
+
+            return { workflows };
+        } catch (e) {
+            console.error('[WorkflowUpdater] 获取云端工作流列表失败:', e.message);
+            return { workflows: [], error: e.message };
+        }
+    }
+
+    /**
+     * 从云端下载并导入工作流
+     * @param {string} workflowName - 工作流名称
+     * @returns {Promise<object>} 返回导入结果
+     */
+    async function downloadWorkflow(workflowName) {
+        try {
+            const data = await fetchJson(CONFIG.workflowVersionsUrl);
+            const workflowInfo = data.workflows?.[workflowName];
+            if (!workflowInfo) {
+                throw new Error('工作流不存在');
+            }
+
+            // 下载工作流配置
+            const workflowConfig = await fetchJson(workflowInfo.url);
+
+            return {
+                success: true,
+                workflow: workflowConfig
+            };
+        } catch (e) {
+            console.error('[WorkflowUpdater] 下载工作流失败:', e.message);
+            return { success: false, error: e.message };
+        }
+    }
+
+    /**
+     * 获取当前脚本版本
+     */
+    function getCurrentVersion() {
+        // 从 GM_info 获取版本号
+        if (GM_info && GM_info.script && GM_info.script.version) {
+            return GM_info.script.version;
+        }
+
+        // 备用：从 meta.js 的 banner 中解析（rollup 打包后版本在文件头部）
+        const match = /\/\/ @version\s+(.+)/.exec(document.querySelector('script')?.textContent || '');
+        return match ? match[1].trim() : '0.0.0';
+    }
+
+    /**
+     * 比较版本号，返回 latest 是否比 current 新
+     * 支持语义化版本比较，如 "1.2.10" > "1.2.9"
+     */
+    function isNewer(latest, current) {
+        const parse = (v) => v.split('.').map(n => parseInt(n, 10) || 0);
+        const [lMajor, lMinor = 0, lPatch = 0] = parse(latest);
+        const [cMajor, cMinor = 0, cPatch = 0] = parse(current);
+
+        if (lMajor !== cMajor) return lMajor > cMajor;
+        if (lMinor !== cMinor) return lMinor > cMinor;
+        return lPatch > cPatch;
+    }
+
     // ============================================
     // UI 创建
     // ============================================
@@ -3024,6 +3336,10 @@
                 <span class="wf-version">v${GM_info.script.version}</span>
             </div>
             <div class="wf-header-btns">
+                <button class="wf-header-btn wf-update-btn" id="update-check-btn">
+                    更新
+                    <span class="wf-update-dot" id="update-dot" style="display:none;"></span>
+                </button>
                 <button class="wf-header-btn" id="minimize-btn" title="最小化">−</button>
                 <button class="wf-header-btn" id="close-btn" title="关闭">×</button>
             </div>
@@ -3177,6 +3493,252 @@
             descriptionModal.style.display = 'flex';
         }
 
+        // 创建更新检查模态框
+        const updateModal = document.createElement('div');
+        updateModal.id = 'update-modal';
+        updateModal.className = 'wf-modal';
+        updateModal.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100001;background:rgba(0,0,0,0.4);align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+        updateModal.innerHTML = `
+        <div class="wf-modal-dialog" style="background:white;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.2);padding:24px;min-width:500px;max-width:720px;max-height:80vh;display:flex;flex-direction:column;animation:wfModalFadeIn 0.15s ease-out;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <div style="font-size:16px;font-weight:600;color:#1a202c;">🔄 检查更新</div>
+                <button id="update-modal-close" style="width:28px;height:28px;border:none;background:#f7fafc;border-radius:6px;cursor:pointer;font-size:16px;color:#718096;display:flex;align-items:center;justify-content:center;">×</button>
+            </div>
+            <div style="display:flex;border-bottom:1px solid #e2e8f0;margin-bottom:16px;">
+                <button class="update-tab active" data-tab="script" style="flex:1;padding:10px;border:none;background:transparent;font-size:14px;font-weight:500;color:#4299e1;border-bottom:2px solid #4299e1;cursor:pointer;">脚本更新</button>
+                <button class="update-tab" data-tab="workflow" style="flex:1;padding:10px;border:none;background:transparent;font-size:14px;font-weight:500;color:#718096;border-bottom:2px solid transparent;cursor:pointer;">工作流更新</button>
+            </div>
+            <div id="update-tab-script" class="update-tab-content" style="flex:1;overflow-y:auto;">
+                <div id="script-update-status" style="text-align:center;padding:20px;color:#718096;">点击下方按钮检查更新</div>
+                <div style="display:flex;justify-content:center;gap:10px;margin-top:16px;">
+                    <button id="check-script-update-btn" style="padding:8px 20px;border:none;background:#4299e1;color:white;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">检查更新</button>
+                </div>
+            </div>
+            <div id="update-tab-workflow" class="update-tab-content" style="flex:1;overflow-y:auto;display:none;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:0 8px;">
+                    <span style="font-size:13px;color:#718096;">云端工作流列表</span>
+                    <button id="refresh-workflow-list-btn" style="padding:6px 16px;border:none;background:#4299e1;color:white;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;transition:background 0.15s;">⟳ 刷新</button>
+                </div>
+                <div id="workflow-update-status" style="padding:8px;">
+                    <div style="text-align:center;padding:40px 20px;color:#718096;">点击「刷新」按钮获取云端工作流</div>
+                </div>
+            </div>
+        </div>
+    `;
+
+        // Tab 切换样式
+        const tabStyles = document.createElement('style');
+        tabStyles.textContent = `
+        .update-tab:hover { color: #4299e1 !important; }
+        .update-tab.active { color: #4299e1 !important; border-bottom-color: #4299e1 !important; }
+        .update-tab:not(.active) { color: #718096 !important; border-bottom-color: transparent !important; }
+    `;
+        document.head.appendChild(tabStyles);
+
+        document.body.appendChild(updateModal);
+
+        // Tab 切换逻辑
+        const tabs = updateModal.querySelectorAll('.update-tab');
+        const tabContents = updateModal.querySelectorAll('.update-tab-content');
+
+        tabs.forEach(tab => {
+            tab.onclick = () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(c => c.style.display = 'none');
+                tab.classList.add('active');
+                const targetTab = tab.dataset.tab;
+                updateModal.querySelector(`#update-tab-${targetTab}`).style.display = 'block';
+
+                // 切换到工作流标签时，自动加载云端工作流
+                if (targetTab === 'workflow') {
+                    loadRemoteWorkflows();
+                }
+            };
+        });
+
+        updateModal.onclick = (e) => { if (e.target === updateModal) updateModal.style.display = 'none'; };
+        updateModal.querySelector('#update-modal-close').onclick = () => { updateModal.style.display = 'none'; };
+
+        // 显示更新模态框
+        function showUpdateModal() {
+            updateModal.style.display = 'flex';
+            // 重置状态
+            document.getElementById('script-update-status').innerHTML = '<div style="text-align:center;padding:20px;color:#718096;">点击下方按钮检查更新</div>';
+            document.getElementById('workflow-update-status').innerHTML = '<div style="text-align:center;padding:40px 20px;color:#718096;">点击「刷新」按钮获取云端工作流</div>';
+        }
+
+        // 检查脚本更新
+        async function checkScriptUpdate() {
+            const statusEl = document.getElementById('script-update-status');
+            statusEl.innerHTML = '<div style="text-align:center;padding:20px;color:#4299e1;">⟳ 正在检查更新...</div>';
+
+            try {
+                const result = await manualCheckUpdate();
+                const currentVersion = result.current;
+
+                if (result.hasUpdate) {
+                    statusEl.innerHTML = `
+                    <div style="padding:16px;background:#f0fff4;border-radius:8px;border:1px solid #9ae6b4;margin-bottom:16px;">
+                        <div style="font-size:14px;font-weight:600;color:#22543d;margin-bottom:8px;">✓ 发现新版本！</div>
+                        <div style="font-size:13px;color:#2f855a;">
+                            <div>当前版本：<strong>v${currentVersion}</strong></div>
+                            <div>最新版本：<strong>v${result.latest}</strong></div>
+                        </div>
+                    </div>
+                    <div style="padding:12px;background:#ebf8ff;border-radius:8px;border:1px solid #90cdf4;margin-bottom:16px;">
+                        <div style="font-size:13px;font-weight:600;color:#2c5282;margin-bottom:6px;">📝 更新内容：</div>
+                        <div style="font-size:13px;color:#2a4365;white-space:pre-line;">${result.changelog || '详见更新日志'}</div>
+                    </div>
+                    <div style="display:flex;justify-content:center;gap:10px;">
+                        <button id="goto-update-btn" style="padding:8px 20px;border:none;background:#48bb78;color:white;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">立即更新</button>
+                    </div>
+                `;
+                    statusEl.querySelector('#goto-update-btn').onclick = () => {
+                        // 隐藏更新提示点
+                        const dot = document.getElementById('update-dot');
+                        if (dot) dot.style.display = 'none';
+                        GM_openInTab(result.scriptUrl, { active: true });
+                    };
+                } else {
+                    statusEl.innerHTML = `
+                    <div style="padding:20px;background:#f7fafc;border-radius:8px;border:1px solid #e2e8f0;">
+                        <div style="font-size:14px;font-weight:600;color:#2d3748;margin-bottom:8px;">✓ 已是最新版本</div>
+                        <div style="font-size:13px;color:#4a5568;">
+                            当前版本 <strong>v${currentVersion}</strong>
+                        </div>
+                    </div>
+                `;
+                }
+            } catch (e) {
+                statusEl.innerHTML = `
+                <div style="padding:20px;background:#fff5f5;border-radius:8px;border:1px solid #fc8181;">
+                    <div style="font-size:14px;font-weight:600;color:#742a2a;margin-bottom:8px;">✗ 检查失败</div>
+                    <div style="font-size:13px;color:#742a2a;">${e.message}</div>
+                </div>
+            `;
+            }
+        }
+
+        // 加载云端工作流列表
+        async function loadRemoteWorkflows() {
+            const statusEl = document.getElementById('workflow-update-status');
+            statusEl.innerHTML = '<div style="text-align:center;padding:20px;color:#4299e1;">⟳ 正在获取云端工作流...</div>';
+
+            try {
+                const result = await getRemoteWorkflows();
+
+                if (result.error) {
+                    statusEl.innerHTML = `
+                    <div style="padding:20px;background:#fff5f5;border-radius:8px;border:1px solid #fc8181;">
+                        <div style="font-size:14px;font-weight:600;color:#742a2a;margin-bottom:8px;">✗ 获取失败</div>
+                        <div style="font-size:13px;color:#742a2a;">${result.error}</div>
+                    </div>
+                `;
+                    return;
+                }
+
+                if (!result.workflows || result.workflows.length === 0) {
+                    statusEl.innerHTML = `
+                    <div style="padding:20px;background:#f7fafc;border-radius:8px;border:1px solid #e2e8f0;">
+                        <div style="font-size:14px;color:#4a5568;">暂无云端工作流</div>
+                    </div>
+                `;
+                    return;
+                }
+
+                // 渲染工作流列表
+                const workflowListHtml = result.workflows.map(wf => {
+                    const statusColor = wf.hasUpdate ? '#48bb78' : (wf.isInstalled ? '#4299e1' : '#718096');
+                    const statusText = wf.hasUpdate ? '有更新' : (wf.isInstalled ? '已安装' : '未安装');
+                    const buttonText = wf.hasUpdate ? '更新' : (wf.isInstalled ? '重新安装' : '安装');
+                    const rowStyle = wf.hasUpdate ? 'background:#f0fff4;' : '';
+
+                    return `
+                    <div style="padding:12px;margin-bottom:8px;border-radius:8px;border:1px solid #e2e8f0;${rowStyle}">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <div style="font-size:14px;font-weight:600;color:#1a202c;">${escapeHtml(wf.name)}</div>
+                            <span style="font-size:12px;padding:2px 8px;border-radius:4px;background:${statusColor}20;color:${statusColor};border:1px solid ${statusColor}40;">${statusText}</span>
+                        </div>
+                        <div style="font-size:12px;color:#718096;margin-bottom:8px;">
+                            云端版本：<strong>v${wf.version}</strong>${wf.localVersion ? ` | 本地版本：v${wf.localVersion}` : ''}
+                        </div>
+                        ${wf.changelog ? `<div style="font-size:12px;color:#4a5568;margin-bottom:8px;white-space:pre-line;">${escapeHtml(wf.changelog)}</div>` : ''}
+                        <button class="download-workflow-btn" data-name="${escapeHtml(wf.name)}" style="padding:6px 16px;border:none;background:${wf.hasUpdate ? '#48bb78' : '#4299e1'};color:white;border-radius:6px;font-size:12px;cursor:pointer;transition:background 0.15s;">${buttonText}</button>
+                    </div>
+                `;
+                }).join('');
+
+                statusEl.innerHTML = `
+                <div style="padding:8px;">
+                    ${workflowListHtml}
+                </div>
+            `;
+
+                // 绑定下载按钮事件
+                statusEl.querySelectorAll('.download-workflow-btn').forEach(btn => {
+                    btn.onclick = async () => {
+                        const workflowName = btn.dataset.name;
+                        btn.textContent = '下载中...';
+                        btn.disabled = true;
+
+                        const result = await downloadWorkflow(workflowName);
+                        if (result.success) {
+                            // 导入工作流
+                            const newWf = result.workflow;
+                            newWf.id = String(Date.now());
+                            const existingNames = new Set(workflowList.map(w => w.name));
+
+                            // 如果工作流名称已存在，询问是否覆盖
+                            const existingIndex = workflowList.findIndex(w => w.name === newWf.name);
+                            if (existingIndex !== -1) {
+                                const confirmed = await showConfirm(`工作流「${newWf.name}」已存在，是否覆盖？`, {
+                                    title: '覆盖确认',
+                                    type: 'warning',
+                                    confirmText: '覆盖',
+                                    cancelText: '取消'
+                                });
+                                if (!confirmed) {
+                                    btn.textContent = buttonText;
+                                    btn.disabled = false;
+                                    return;
+                                }
+                                // 覆盖现有工作流，保留 ID
+                                newWf.id = workflowList[existingIndex].id;
+                                workflowList[existingIndex] = newWf;
+                                addLog(`工作流「${newWf.name}」已更新`, 'success');
+                            } else {
+                                workflowList.push(newWf);
+                                addLog(`工作流「${newWf.name}」已安装`, 'success');
+                            }
+
+                            saveWorkflowList();
+                            updateWorkflowSelect();
+                            updateWorkflowInfoDisplay();
+                            btn.textContent = '完成';
+
+                            // 刷新列表
+                            setTimeout(() => loadRemoteWorkflows(), 1000);
+                        } else {
+                            btn.textContent = '失败';
+                            showToast(`下载失败：${result.error}`, 'error');
+                            setTimeout(() => {
+                                btn.textContent = buttonText;
+                                btn.disabled = false;
+                            }, 2000);
+                        }
+                    };
+                });
+
+            } catch (e) {
+                statusEl.innerHTML = `
+                <div style="padding:20px;background:#fff5f5;border-radius:8px;border:1px solid #fc8181;">
+                    <div style="font-size:14px;font-weight:600;color:#742a2a;margin-bottom:8px;">✗ 加载失败</div>
+                    <div style="font-size:13px;color:#742a2a;">${e.message}</div>
+                </div>
+            `;
+            }
+        }
+
         // 绑定事件
         const minimizeBtn = document.getElementById('minimize-btn');
         minimizeBtn.onclick = (e) => { e.stopPropagation(); toggleMinimize(); };
@@ -3215,6 +3777,9 @@
         document.getElementById('reset-btn').onclick = async () => { if (await showConfirm('确定要重置工作流状态吗？', { title: '重置工作流', type: 'danger', confirmText: '重置' })) resetWorkflow(); };
         document.getElementById('skip-btn').onclick = () => { skipToNextStep(); };
         document.getElementById('desc-btn').onclick = () => { showDescription(); };
+        document.getElementById('update-check-btn').onclick = () => { showUpdateModal(); };
+        document.getElementById('check-script-update-btn').onclick = () => { checkScriptUpdate(); };
+        document.getElementById('refresh-workflow-list-btn').onclick = () => { loadRemoteWorkflows(); };
         document.getElementById('continue-btn').onclick = () => { resumeAfterUserAction(); };
 
         document.getElementById('step-list-toggle').onclick = () => {
@@ -3312,6 +3877,45 @@
         setupDrag(panel);
         updateUI();
         renderLogs();
+
+        // 添加更新按钮样式
+        const updateBtnStyle = document.createElement('style');
+        updateBtnStyle.textContent = `
+        .wf-update-btn {
+            position: relative;
+            width: auto !important;
+            min-width: 24px;
+            padding: 0 8px !important;
+            white-space: nowrap;
+        }
+        .wf-update-dot {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            width: 8px;
+            height: 8px;
+            background: #48bb78;
+            border-radius: 50%;
+            border: 2px solid white;
+        }
+        .wf-update-badge {
+            background: #e53e3e;
+            color: white;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 6px;
+            font-weight: 500;
+        }
+    `;
+        document.head.appendChild(updateBtnStyle);
+
+        // 检查是否已检测到更新（由 index.js 统一管理）
+        const hasUpdate = window.wfHasUpdate;
+        if (hasUpdate) {
+            const dot = document.getElementById('update-dot');
+            if (dot) dot.style.display = 'inline';
+        }
 
         if (shouldAutoResume) {
             addLog(`页面加载完成，自动恢复执行... (步骤${currentStepIndex + 1})`, 'info');
@@ -3884,122 +4488,6 @@
         window.addEventListener('hashchange', onUrlChange);
     }
 
-    /**
-     * 自动更新检查模块
-     * 每天检查一次 GitHub Pages 上的 version.json，发现新版本时提醒用户
-     */
-
-    // ⚠️ 需要配置：将这些 URL 改为你的实际地址
-    const CONFIG = {
-        // GitHub Pages 上的 version.json 地址
-        versionUrl: 'https://yingchengwang.github.io/pub/version.json',
-
-        // 脚本主页（用户点击"更新"时打开的页面）
-        scriptUrl: 'https://yingchengwang.github.io/pub/workhelper/form-workflow.user.js',
-
-        // 检查间隔（毫秒）：24小时 = 86400000
-        checkInterval: 24 * 60 * 60 * 1000,
-    };
-
-    // 存储键名
-    const KEYS = {
-        lastCheck: 'updater_lastCheck',
-        dismissedVersion: 'updater_dismissedVersion',
-    };
-
-    /**
-     * 检查是否有新版本可用
-     */
-    async function checkUpdate() {
-        const lastCheck = GM_getValue(KEYS.lastCheck, 0);
-        const now = Date.now();
-
-        // 未到检查时间
-        if (now - lastCheck < CONFIG.checkInterval) {
-            return;
-        }
-
-        // 更新检查时间
-        GM_setValue(KEYS.lastCheck, now);
-
-        try {
-            const response = await fetch(CONFIG.versionUrl);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            // 获取当前版本（从 meta.js 中的 @version）
-            const currentVersion = getCurrentVersion();
-
-            // 检查是否是新版本
-            if (isNewer(data.version, currentVersion)) {
-                // 检查用户是否已忽略此版本
-                const dismissed = GM_getValue(KEYS.dismissedVersion, '');
-                if (dismissed === data.version) {
-                    console.log(`[Updater] 版本 ${data.version} 已被用户忽略`);
-                    return;
-                }
-
-                showUpdateDialog(data.version, data.changelog, currentVersion);
-            } else {
-                console.log(`[Updater] 已是最新版本 ${currentVersion}`);
-            }
-        } catch (e) {
-            console.error('[Updater] 检查更新失败:', e.message);
-        }
-    }
-
-    /**
-     * 获取当前脚本版本
-     */
-    function getCurrentVersion() {
-        // 从 GM_info 获取版本号
-        if (GM_info && GM_info.script && GM_info.script.version) {
-            return GM_info.script.version;
-        }
-
-        // 备用：从 meta.js 的 banner 中解析（rollup 打包后版本在文件头部）
-        const match = /\/\/ @version\s+(.+)/.exec(document.querySelector('script')?.textContent || '');
-        return match ? match[1].trim() : '0.0.0';
-    }
-
-    /**
-     * 比较版本号，返回 latest 是否比 current 新
-     * 支持语义化版本比较，如 "1.2.10" > "1.2.9"
-     */
-    function isNewer(latest, current) {
-        const parse = (v) => v.split('.').map(n => parseInt(n, 10) || 0);
-        const [lMajor, lMinor = 0, lPatch = 0] = parse(latest);
-        const [cMajor, cMinor = 0, cPatch = 0] = parse(current);
-
-        if (lMajor !== cMajor) return lMajor > cMajor;
-        if (lMinor !== cMinor) return lMinor > cMinor;
-        return lPatch > cPatch;
-    }
-
-    /**
-     * 显示更新对话框
-     */
-    function showUpdateDialog(latestVersion, changelog, currentVersion) {
-        const confirmed = confirm(
-            `📦 发现新版本！\n\n` +
-            `当前版本：${currentVersion}\n` +
-            `最新版本：${latestVersion}\n\n` +
-            `📝 更新内容：\n${changelog || '详见更新日志'}\n\n` +
-            `是否前往更新？\n\n` +
-            `（点击"取消"将暂时忽略此版本，下次仍会提醒）`
-        );
-
-        if (confirmed) {
-            GM_openInTab(CONFIG.scriptUrl, { active: true });
-        } else {
-            // 记录用户忽略的版本，下次不再提醒同一版本
-            GM_setValue(KEYS.dismissedVersion, latestVersion);
-        }
-    }
-
     // 注入样式
     injectStyles();
 
@@ -4017,6 +4505,24 @@
     setUpdateUIRef$1(updateUI);
     setUpdateUIRef(updateUI);
 
+    // 设置更新回调：当检测到新版本时，在更新按钮上显示绿点
+    setUpdateCallback((result) => {
+        if (result && result.hasUpdate) {
+            const dot = document.getElementById('update-dot');
+            if (dot) {
+                dot.style.display = 'inline';
+                console.log('[Update] 绿点已显示');
+            }
+            // 设置全局状态，供 UI 初始化时检查
+            // 判断是脚本更新还是工作流更新
+            if (result.workflows) {
+                window.wfWorkflowUpdate = true;
+            } else {
+                window.wfHasUpdate = true;
+            }
+        }
+    });
+
     // 初始化 UI
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
@@ -4031,6 +4537,30 @@
     }
 
     // 检查更新（异步，不阻塞主流程）
-    checkUpdate();
+    checkUpdate().then(result => {
+        if (result && result.hasUpdate) {
+            window.wfHasUpdate = true;
+        }
+    });
+
+    // 检查工作流更新（异步，不阻塞主流程）
+    checkWorkflowUpdate().then(result => {
+        if (result && result.hasUpdate) {
+            window.wfWorkflowUpdate = true;
+        }
+    });
+
+    // 调试辅助函数：在控制台调用 wf.clearUpdateCheck() 来清除更新检查时间
+    // 使用 unsafeWindow 将函数暴露到页面全局作用域，使其可在浏览器控制台中访问
+    if (typeof unsafeWindow !== 'undefined') {
+        unsafeWindow.wf = {
+            clearUpdateCheck: () => GM_deleteValue('updater_lastCheck'),
+            clearDismissedVersion: () => GM_deleteValue('updater_dismissedVersion'),
+            forceCheckUpdate: () => {
+                GM_deleteValue('updater_lastCheck');
+                return checkUpdate();
+            }
+        };
+    }
 
 })();

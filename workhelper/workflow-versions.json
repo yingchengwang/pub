@@ -1,22 +1,22 @@
 {
   "workflows": {
     "sit2信贷申请流程": {
-      "version": "33",
+      "version": "32",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit2.json",
       "changelog": "- 优化表单填写逻辑\n- 修复步骤跳转问题"
     },
     "sit1信贷申请流程": {
-      "version": "25",
+      "version": "31",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit1.json",
       "changelog": "- 初始版本"
     },
     "dev1信贷申请流程": {
-      "version": "10",
+      "version": "31",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_dev1.json",
       "changelog": "- 初始版本"
     },
     "我的账号登录流程-整合版": {
-      "version": "5",
+      "version": "2",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-login.json",
       "changelog": "- 初始版本"
     }
