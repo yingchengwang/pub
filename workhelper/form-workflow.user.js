@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.20
+// @version      3.0.22
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -2992,12 +2992,18 @@
 
     /**
      * 使用 GM_xmlhttpRequest 获取 JSON（绕过 CSP 限制）
+     * 添加时间戳参数避免缓存
      */
     function fetchJson(url) {
+        // 添加缓存破坏参数
+        const cacheBuster = `_t=${Date.now()}`;
+        const separator = url.includes('?') ? '&' : '?';
+        const urlWithCacheBuster = url + separator + cacheBuster;
+
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 method: 'GET',
-                url: url,
+                url: urlWithCacheBuster,
                 onload: (response) => {
                     if (response.status >= 200 && response.status < 300) {
                         try {
@@ -3598,8 +3604,15 @@
                         const dot = document.getElementById('update-dot');
                         if (dot) dot.style.display = 'none';
                         GM_openInTab(result.scriptUrl, { active: true });
+                        // 提示用户更新后需要刷新页面
+                        showToast('请在 Tampermonkey 中更新脚本后刷新页面', 'info', 5000);
                     };
                 } else {
+                    // 已是最新版本，隐藏绿点
+                    const dot = document.getElementById('update-dot');
+                    if (dot) dot.style.display = 'none';
+                    window.wfHasUpdate = false;
+
                     statusEl.innerHTML = `
                     <div style="padding:20px;background:#f7fafc;border-radius:8px;border:1px solid #e2e8f0;">
                         <div style="font-size:14px;font-weight:600;color:#2d3748;margin-bottom:8px;">✓ 已是最新版本</div>
@@ -3674,6 +3687,14 @@
                 </div>
             `;
 
+                // 检查是否还有待更新的工作流，如果没有则隐藏绿点
+                const hasAnyUpdate = result.workflows?.some(w => w.hasUpdate);
+                if (!hasAnyUpdate) {
+                    const dot = document.getElementById('update-dot');
+                    if (dot) dot.style.display = 'none';
+                    window.wfWorkflowUpdate = false;
+                }
+
                 // 绑定下载按钮事件
                 statusEl.querySelectorAll('.download-workflow-btn').forEach(btn => {
                     btn.onclick = async () => {
@@ -3722,8 +3743,19 @@
                             updateWorkflowInfoDisplay();
                             btn.textContent = '完成';
 
-                            // 刷新列表
-                            setTimeout(() => loadRemoteWorkflows(), 1000);
+                            // 刷新列表并检查是否还有待更新的工作流
+                            setTimeout(async () => {
+                                await loadRemoteWorkflows();
+                                // 检查是否还有待更新的工作流
+                                const remoteResult = await getRemoteWorkflows();
+                                const hasAnyUpdate = remoteResult.workflows?.some(w => w.hasUpdate);
+                                if (!hasAnyUpdate) {
+                                    // 没有待更新的工作流了，隐藏绿点
+                                    const dot = document.getElementById('update-dot');
+                                    if (dot) dot.style.display = 'none';
+                                    window.wfWorkflowUpdate = false;
+                                }
+                            }, 1000);
                         } else {
                             btn.textContent = '失败';
                             showToast(`下载失败：${result.error}`, 'error');
