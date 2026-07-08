@@ -1,0 +1,117 @@
+{
+  "name": "我的账号登录流程-整合版",
+  "version": "1",
+  "enabled": true,
+  "group": "登录",
+  "order": 0,
+  "description": "账号自动登录工作流\n\n使用步骤：\n1. 打开信贷系统登录页面\n2. 点击「开始执行」按钮\n3. 脚本会自动填写账号密码并点击登录\n\n注意事项：\n- 确保 variables 中的账号密码已正确填写\n- 错误处理模式设置为「手动」，遇到错误会暂停",
+  "variables": {
+    "username": "v_yingchengwang",
+    "pwd": "v_yingchengwang@123A"
+  },
+  "execution": {
+    "stepDelay": 50,
+    "onError": "manual"
+  },
+  "steps": [
+    {
+      "name": "1. 登录",
+      "actions": [
+        {
+          "type": "click",
+          "selector": "#fm1 div.login-type-radio input[value=\"LOCAL\"]",
+          "description": "选择Local"
+        },
+        {
+          "type": "condition",
+          "description": "判断登录类型",
+          "condition": {
+            "type": "elementExists",
+            "selector": "#j_username"
+          },
+          "gotoTrue": "j_username",
+          "gotoFalse": "j_local_username"
+        },
+        {
+          "id": "j_username",
+          "type": "fill",
+          "selector": "#j_username",
+          "value": "${username}",
+          "description": "类型1：输入账号",
+          "waitUserAction": false
+        },
+        {
+          "type": "condition",
+          "description": "跳过类型2，直接去密码",
+          "condition": {
+            "type": "alwaysTrue"
+          },
+          "gotoTrue": "j_password",
+          "gotoFalse": ""
+        },
+        {
+          "id": "j_local_username",
+          "type": "fill",
+          "selector": "#j_local_username",
+          "value": "${username}",
+          "description": "类型2：输入账号",
+          "waitUserAction": false
+        },
+        {
+          "type": "condition",
+          "description": "直接去密码",
+          "condition": {
+            "type": "alwaysTrue"
+          },
+          "gotoTrue": "j_password",
+          "gotoFalse": ""
+        },
+        {
+          "id": "j_password",
+          "type": "fill",
+          "selector": "#j_password",
+          "value": "${pwd}",
+          "description": "输入密码",
+          "waitUserAction": false
+        },
+        {
+          "type": "click",
+          "selector": "#ibnLogin",
+          "description": "点击登录按钮"
+        }
+      ]
+    },
+    {
+      "name": "2. 强制登陆检测",
+      "actions": [
+        {
+          "type": "wait",
+          "ms": 500,
+          "description": "等待页面跳转"
+        },
+        {
+          "type": "condition",
+          "description": "强制登陆检测",
+          "condition": {
+            "type": "elementExists",
+            "selector": "#fm1 > div.button-group > button[name=\"force\"]"
+          },
+          "gotoTrue": "forceLogin",
+          "gotoFalse": "merge_point1"
+        },
+        {
+          "id": "forceLogin",
+          "type": "click",
+          "selector": "#fm1 > div.button-group > button[name=\"force\"]",
+          "description": "点击强制登录"
+        },
+        {
+          "id": "merge_point1",
+          "type": "noop",
+          "description": "登录成功"
+        }
+      ]
+    }
+  ]
+}
+

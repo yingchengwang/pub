@@ -1,0 +1,854 @@
+{
+  "name": "sit2信贷申请流程",
+  "version": "32",
+  "enabled": true,
+  "group": "新建订单",
+  "order": 2,
+  "description": "信贷申请自动填写工作流\n\n使用步骤：\n1. 打开信贷系统的case pool页面，关闭页面其他标签页避免数量超出\n2. 点击「开始执行」按钮\n3. 脚本会自动填写表单各字段\n4. 遇到标记为「手动」的操作时，请手动完成后点击「继续」\n5. 如遇错误，可手动处理后点击「继续」\n\n注意事项：\n- 确保 variables 中的个人信息已正确填写\n- 部分操作需要手动完成（如选择年份）\n- 错误处理模式设置为「手动」，遇到错误会暂停",
+  "variables": {
+    "idNumber": "850522-44-2208",
+    "customerName": "AutoFillHelper",
+    "mobilePhoneNo": "9858868",
+    "lendingType": "Islamic",
+    "deliveryChannel": "H29 - ALC SEREMBAN",
+    "loanProposal": "Leong Yi Ying(1245026)"
+  },
+  "execution": {
+    "stepDelay": 50,
+    "onError": "manual"
+  },
+  "steps": [
+    {
+      "name": "0. 页面调整",
+      "actions": [
+        {
+          "type": "urlReplace",
+          "description": "跳转到进件池",
+          "find": "/crediosweb/.*$",
+          "replace": "/crediosweb/sales-workspace/application-case-pool",
+          "useRegex": true
+        },
+        {
+          "type": "wait",
+          "ms": 800,
+          "description": "等待页面加载"
+        }
+      ]
+    },
+    {
+      "name": "1. 列表页点击新建",
+      "actions": [
+        {
+          "type": "click",
+          "selector": "//*[@id=\"app\"]/section/section/main/div/div[1]/div/div[2]/div/div/form/div/div[13]/div/button[3]",
+          "description": "点击 New Application 按钮"
+        },
+        {
+          "type": "waitFor",
+          "selector": "#form_item_idNumber",
+          "timeout": 10000,
+          "description": "等待跳转到填单页面"
+        }
+      ]
+    },
+    {
+      "name": "2. 身份验证",
+      "actions": [
+        {
+          "type": "fill",
+          "selector": "#form_item_idNumber",
+          "value": "${idNumber}",
+          "description": "输入身份证号",
+          "waitUserAction": false
+        },
+        {
+          "type": "wait",
+          "ms": 200,
+          "description": "等待数据加载"
+        },
+        {
+          "type": "click",
+          "selector": "#form_item_idNumber + span > span",
+          "description": "点击搜索按钮"
+        },
+        {
+          "type": "wait",
+          "ms": 1000,
+          "description": "等待数据加载"
+        },
+        {
+          "type": "fill",
+          "selector": "#iv-customer-basic-editable + form div:has(label[title=\"Customer Name\"]) + div input",
+          "value": "${customerName}",
+          "description": "输入姓名"
+        },
+        {
+          "type": "wait",
+          "ms": 100,
+          "description": "等待"
+        },
+        {
+          "type": "fill",
+          "selector": "#iv-customer-basic-editable + form div:has(label[title=\"Mobile Phone No\"]) + div > div > div > span > input",
+          "value": "${mobilePhoneNo}",
+          "description": "输入手机号",
+          "waitUserAction": false
+        }
+      ]
+    },
+    {
+      "name": "3. 申请详情",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#application-details",
+          "block": "center",
+          "description": "滚动到申请详情区域"
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_conventionalIslamic",
+          "value": "${lendingType}",
+          "description": "选择 Lending/Financing Type",
+          "waitAfterClick": 1000
+        },
+        {
+          "type": "condition",
+          "description": "是否需要选择Delivery Channel",
+          "condition": {
+            "type": "elementAttribute",
+            "selector": "span:has(input#form_item_deliveryChannel) + span.ant-select-selection-item",
+            "attribute": "title",
+            "match": "empty"
+          },
+          "gotoTrue": "selectDeliveryChannel",
+          "gotoFalse": "selectLoanProposal"
+        },
+        {
+          "id": "selectDeliveryChannel",
+          "type": "select",
+          "selector": "#form_item_deliveryChannel",
+          "value": "${deliveryChannel}",
+          "description": "选择Delivery Channel",
+          "waitAfterClick": 800
+        },
+        {
+          "id": "selectLoanProposal",
+          "type": "click",
+          "selector": "#form_item_loanProposalId",
+          "description": "点击选择loanProposal"
+        },
+        {
+          "type": "click",
+          "selector": "#form_item_loanProposalId_list + div.rc-virtual-list div.ant-select-item:nth-of-type(1)",
+          "description": "选第一个loanProposal"
+        },
+        {
+          "type": "condition",
+          "description": "是否需要选择closingBranch",
+          "condition": {
+            "type": "elementAttribute",
+            "selector": "span:has(input#form_item_closingBranch) + span.ant-select-selection-item",
+            "attribute": "title",
+            "match": "empty"
+          },
+          "gotoTrue": "selectClosingBranch",
+          "gotoFalse": "selectBranchManager"
+        },
+        {
+          "id": "selectClosingBranch",
+          "type": "select",
+          "selector": "#form_item_closingBranch",
+          "value": "Taman Tampoi Indah Branch",
+          "description": "选择 closingBranch",
+          "waitAfterClick": 800
+        },
+        {
+          "id": "selectBranchManager",
+          "type": "select",
+          "selector": "#form_item_branchManager",
+          "value": "jenniwei (jenniwei)",
+          "description": "选择 Sales Manager",
+          "waitAfterClick": 800
+        },
+        {
+          "type": "wait",
+          "ms": 500,
+          "description": "等待数据加载"
+        },
+        {
+          "type": "click",
+          "selector": "//*[@id=\"app\"]/section/section/main/div/div[2]/div/div[2]/div[2]/button[4]",
+          "description": "下一步"
+        },
+        {
+          "type": "wait",
+          "ms": 2000,
+          "description": "等待"
+        }
+      ]
+    },
+    {
+      "name": "4. 个人信息",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#personal-information",
+          "block": "center",
+          "description": "滚动到Personal Information"
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_race",
+          "value": "Malay",
+          "description": "选择 race",
+          "waitAfterClick": 800
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_maritalStatus",
+          "value": "Single",
+          "description": "选择 Marital Status",
+          "waitAfterClick": 800
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_noOfDependents",
+          "value": "3",
+          "description": "输入 Number of Dependents",
+          "waitAfterClick": 800
+        }
+      ]
+    },
+    {
+      "name": "5. 家庭地址",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#home-address",
+          "block": "center",
+          "description": "滚动到Home Address"
+        },
+        {
+          "type": "click",
+          "selector": "#form_item_postCodeValue",
+          "description": "点击 PostCode"
+        },
+        {
+          "type": "click",
+          "selector": "#form_item_postCodeValue_list + div.rc-virtual-list div.ant-select-item:nth-of-type(1)",
+          "description": "选第一个PostCode"
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_addressLine1",
+          "value": "123",
+          "description": "line1"
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_addressLine2",
+          "value": "123",
+          "description": "line2"
+        },
+        {
+          "type": "select",
+          "selector": "#home-address + form div:has(label[title=\"Home Ownership\"]) +div input[type=\"search\"]",
+          "value": "Employer's",
+          "description": "选择 Home Ownership",
+          "waitAfterClick": 800
+        }
+      ]
+    },
+    {
+      "name": "6. 工作地址",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "div label[title=\"Address Type\",for=\"form_item_addressList_1_addressType\"]",
+          "block": "center",
+          "description": "滚动到 Work Address"
+        },
+        {
+          "type": "click",
+          "selector": "div:has(label[for=\"form_item_addressList_1_addressType\"]) + div div:has(label[title=\"Postcode\"]) + div  span.ant-select-selection-item",
+          "description": "点击PostCode"
+        },
+        {
+          "type": "click",
+          "selector": "#form_item_postCodeValue_list + div.rc-virtual-list div.ant-select-item:nth-of-type(1)",
+          "index": 1,
+          "description": "选第一个PostCode"
+        },
+        {
+          "type": "fill",
+          "selector": "div:has(#home-address) + div div:has(label[title=\"Address Line 1\"]) + div  input",
+          "value": "123",
+          "description": "line1"
+        },
+        {
+          "type": "fill",
+          "selector": "div:has(#home-address) + div div:has(label[title=\"Address Line 2\"]) + div  input",
+          "value": "123",
+          "description": "line2"
+        }
+      ]
+    },
+    {
+      "name": "7. 邮箱信息",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#email-information",
+          "block": "center",
+          "description": "滚动到 email"
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_emailAddress",
+          "value": "123@qq.com",
+          "description": "email"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-form-item-control-input-content:has(#form_item_emailAddress)  button",
+          "description": "点击 邮箱校验"
+        }
+      ]
+    },
+    {
+      "name": "8. 确认条款",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#individual-confirmation",
+          "block": "center",
+          "description": "滚动到 confirmation"
+        },
+        {
+          "type": "click",
+          "selector": "//*[@id=\"form_item_marketingConsent\"]/label[1]/span[1]",
+          "description": "点击 Customer consent to HLB/HUSB for marketing"
+        }
+      ]
+    },
+    {
+      "name": "9. 雇佣信息",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#employment-information",
+          "block": "center",
+          "description": "滚动到 employment-information"
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_employerName",
+          "value": "AutoFillHelperEmpName",
+          "description": "输入 Employer Name"
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_occupation",
+          "value": "ABLE-BODIED SEAMAN/G069-SHIPS, DECK CREWS AND RELATED WORKERS",
+          "description": "选择 Occupation Name",
+          "waitAfterClick": 800
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_employmentType",
+          "value": "Employer",
+          "description": "选择 Employment Type",
+          "waitAfterClick": 800
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_employmentSector",
+          "value": "Accommodation and Food Service Activities",
+          "description": "选择 Employment Sector",
+          "waitAfterClick": 800
+        },
+        {
+          "type": "wait",
+          "ms": 100,
+          "description": "等待"
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_industrySector",
+          "value": "Cafeterias/canteens",
+          "description": "选择 Industry Sector",
+          "waitAfterClick": 800
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_lengthOfServiceYears",
+          "value": "1",
+          "description": "输入year"
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_lengthOfServiceMonths",
+          "value": "1",
+          "description": "输入month"
+        }
+      ]
+    },
+    {
+      "name": "10. Asset Information",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#asset-information",
+          "block": "center",
+          "description": "滚动到 Asset"
+        },
+        {
+          "type": "click",
+          "selector": "#asset-information > div > div > div.ant-collapse-header",
+          "description": "点击 Asset"
+        },
+        {
+          "type": "wait",
+          "ms": 1000,
+          "description": "等待"
+        },
+        {
+          "type": "fill",
+          "selector": "#investments-savings + section div:has(label[title=\"Saving Acc. Balance\"]) + div input",
+          "value": "1",
+          "description": "输入Saving Acc. Balance"
+        },
+        {
+          "type": "fill",
+          "selector": "#investments-savings + section div:has(label[title=\"Current Acc. Credit End Balance\"]) + div input",
+          "value": "1",
+          "description": "输入Current Acc. Credit End Balance"
+        },
+        {
+          "type": "fill",
+          "selector": "#investments-savings + section div:has(label[title=\"FD / GIA Receipts Value\"]) + div input",
+          "value": "1",
+          "description": "输入FD / GIA Receipts Value"
+        },
+        {
+          "type": "fill",
+          "selector": "#investments-savings + section div:has(label[title=\"Unit Trust/Investment Value\"]) + div input",
+          "value": "1",
+          "description": "输入Unit Trust/Investment Value"
+        },
+        {
+          "type": "fill",
+          "selector": "#investments-savings + section div:has(label[title=\"CDS Statement Value\"]) + div input",
+          "value": "1",
+          "description": "输入CDS Statement Value"
+        },
+        {
+          "type": "fill",
+          "selector": "#investments-savings + section div:has(label[title=\"Other Valid Networth Value\"]) + div input",
+          "value": "1",
+          "description": "输入Other Valid Networth Value"
+        },
+        {
+          "type": "fill",
+          "selector": "#investments-savings + section div:has(label[title=\"OMV of Unencumbered Properties\"]) + div input",
+          "value": "1",
+          "description": "输入OMV of Unencumbered Properties"
+        },
+        {
+          "type": "fill",
+          "selector": "#investments-savings + section div:has(label[title=\"Total Balance of EPF Statement\"]) + div input",
+          "value": "1",
+          "description": "输入Total Balance of EPF Statement"
+        }
+      ]
+    },
+    {
+      "name": "11. 车辆详情",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#collateral-seller",
+          "block": "center",
+          "description": "滚动到 Collateral-Seller"
+        },
+        {
+          "type": "click",
+          "selector": "#collateral-seller > div > div > div.ant-collapse-header",
+          "description": "点击 Collateral & Seller"
+        },
+        {
+          "type": "wait",
+          "ms": 1000,
+          "description": "等待"
+        },
+        {
+          "type": "scroll",
+          "selector": "#purchase-detail",
+          "block": "center",
+          "description": "滚动到 purchase-detail"
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_purchasePrice",
+          "value": "88888",
+          "description": "输入购买价格"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-input-number:has(div > #form_item_purchasePrice) > div:nth-of-type(1) > span[role=\"button\"]:nth-of-type(2)",
+          "description": "避免购买价格爆红"
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_vehicleStatus",
+          "value": "New",
+          "description": "选择车辆状态",
+          "waitAfterClick": 800
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_makeCode",
+          "value": "AUDI",
+          "description": "选择车辆品牌",
+          "waitAfterClick": 800
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_familyCode",
+          "value": "A3 2.0(A)",
+          "description": "选择车辆MR",
+          "waitAfterClick": 800
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_modelReference",
+          "value": "1.4 TFSI SEDAN S-Tronic FWD Petrol 8V",
+          "description": "选择车辆FisMD",
+          "waitAfterClick": 800
+        },
+        {
+          "type": "click",
+          "selector": "#form_item_manufactureYear",
+          "description": "点击年份选择",
+          "waitUserAction": false
+        },
+        {
+          "type": "click",
+          "selector": "table.ant-picker-content > tbody > tr >td[title=\"2025\"]",
+          "description": "选择年份",
+          "waitUserAction": false
+        }
+      ]
+    },
+    {
+      "name": "12. 经销商信息",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#dealer-info",
+          "block": "center",
+          "description": "滚动到 dealer-info"
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_dealerCode",
+          "value": "98140000101",
+          "description": "选择经销商代码",
+          "waitAfterClick": 800
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_salespersonName",
+          "value": "2025",
+          "description": "输入生产年份"
+        }
+      ]
+    },
+    {
+      "name": "13. 收入计算器入口",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#applicant-income",
+          "block": "center",
+          "description": "滚动到 收入"
+        },
+        {
+          "type": "click",
+          "selector": "#applicant-income > div > button:nth-child(1)",
+          "description": "点击收入计算器"
+        },
+        {
+          "type": "wait",
+          "ms": 1000,
+          "description": "等待数据加载"
+        }
+      ]
+    },
+    {
+      "name": "14. 收入计算器填写",
+      "actions": [
+        {
+          "type": "click",
+          "selector": "section.layout-main-wrap > main > div > div > div.ant-card-body > div >div.ant-tabs-content-holder > div >div:nth-child(1) > div > div > div.footer-section  div.button-group button:nth-child(1)",
+          "description": "点击 add"
+        },
+        {
+          "type": "wait",
+          "ms": 2000,
+          "description": "等待数据加载"
+        },
+        {
+          "type": "fill",
+          "selector": "div.detail-container > div.income-detail > form > div.monthly-income-table table > tbody > tr:nth-child(2) > td:nth-child(1) > div.month-year-cell > input",
+          "value": "01/2025",
+          "description": "输入年份"
+        },
+        {
+          "type": "wait",
+          "ms": 50,
+          "description": "等待数据加载"
+        },
+        {
+          "type": "fill",
+          "selector": "div.detail-container > div.income-detail > form > div.monthly-income-table table > tbody > tr:nth-child(2) > td:nth-child(2) > input",
+          "value": "99999",
+          "description": "输入金额1"
+        },
+        {
+          "type": "fill",
+          "selector": "div.detail-container > div.income-detail > form > div.monthly-income-table table > tbody > tr:nth-child(3) > td:nth-child(2) > input",
+          "value": "99999",
+          "description": "输入金额2"
+        },
+        {
+          "type": "fill",
+          "selector": "div.detail-container > div.income-detail > form > div.monthly-income-table table > tbody > tr:nth-child(4) > td:nth-child(2) > input",
+          "value": "99999",
+          "description": "输入金额3"
+        },
+        {
+          "type": "click",
+          "selector": "div.detail-container > div.income-detail > form > fieldset:nth-child(3) > div > div:nth-child(1) > div  input:nth-of-type(1)",
+          "description": "勾选Payslip"
+        },
+        {
+          "type": "click",
+          "selector": "div.detail-container > div.footer-button-group > div > div:nth-child(3) > button",
+          "description": "保存income计算器"
+        },
+        {
+          "type": "wait",
+          "ms": 1000,
+          "description": "等待"
+        },
+        {
+          "type": "click",
+          "selector": "main > div.sales-calculator-page > div.page-card > div.ant-card-body > div > div.ant-tabs-content-holder > div > div:nth-child(1) > div >  div.income-container > div.table-container >div.ant-table-wrapper > div > div > div.ant-table > div > div.ant-table-header >  table:nth-of-type(1) > thead > tr > th:nth-child(1) input:nth-of-type(1)",
+          "description": "勾选收入"
+        },
+        {
+          "type": "click",
+          "selector": "main > div.sales-calculator-page > div.page-card > div.ant-card-body > div > div.ant-tabs-content-holder > div >div:nth-child(1) > div > div.income-container > div:nth-child(2) > div:nth-child(2) > button:nth-child(2)",
+          "description": "点击 update"
+        },
+        {
+          "type": "click",
+          "selector": "#app > section > section > main > div > div > div > header > div > span",
+          "description": "返回主界面"
+        }
+      ]
+    },
+    {
+      "name": "15. 继续处理收入计算器",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#applicant-income",
+          "block": "center",
+          "description": "滚动到 收入"
+        },
+        {
+          "type": "click",
+          "selector": "#applicant-income > div > button:nth-child(2)",
+          "description": "刷新收入"
+        },
+        {
+          "type": "click",
+          "selector": "#applicant-income + form > section div:has(label[title=\"Primary Income Doc\"]) + div input",
+          "description": "click选择Doc"
+        },
+        {
+          "type": "click",
+          "selector": "div.rc-virtual-list div.ant-select-item[paramkey=\"primaryIncomeDoc\"]:nth-of-type(1)",
+          "description": "选第一个"
+        }
+      ]
+    },
+    {
+      "name": "16. 融资详情",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#facility-financing",
+          "block": "center",
+          "description": "滚动到 facility-financing"
+        },
+        {
+          "type": "click",
+          "selector": "#facility-financing > div > div > div.ant-collapse-header",
+          "description": "点击 facility-financing"
+        },
+        {
+          "type": "wait",
+          "ms": 1000,
+          "description": "等待"
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_amountApplied",
+          "value": "44444",
+          "description": "申请金额"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-input-number:has(div > #form_item_amountApplied) > div:nth-of-type(1) > span[role=\"button\"]:nth-of-type(2)",
+          "description": "避免金额爆红"
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_tenure",
+          "value": "12",
+          "description": "期限"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-input-number:has(div > #form_item_tenure) > div:nth-of-type(1) > span[role=\"button\"]:nth-of-type(2)",
+          "description": "避免期限爆红"
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_handlingFee",
+          "value": "12",
+          "description": "手续费"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-input-number:has(div > #form_item_handlingFee) > div:nth-of-type(1) > span[role=\"button\"]:nth-of-type(2)",
+          "description": "避免手续费爆红"
+        },
+        {
+          "type": "scroll",
+          "selector": "#facility-financing > div > div form div:has(label[title=\"Proposed Rate By\"]) ~ div div.segmented-item:nth-of-type(1)",
+          "block": "center",
+          "description": "滚动到 IR"
+        },
+        {
+          "type": "click",
+          "selector": "#facility-financing > div > div form div:has(label[title=\"Proposed Rate By\"]) ~ div div.segmented-item:nth-of-type(3)",
+          "description": "选择IR"
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_proposedInterestRate",
+          "value": "4",
+          "description": "利率"
+        },
+        {
+          "type": "click",
+          "selector": "//*[@id=\"facility-financing\"]/div/div/div[2]/div/div/div[1]/form/div[6]/div[5]/div/div/div/div/div/div/div[1]/button",
+          "description": "计算"
+        },
+        {
+          "type": "wait",
+          "ms": 1000,
+          "description": "等待数据加载"
+        },
+        {
+          "type": "click",
+          "selector": "#facility-financing div.dsr-card  button",
+          "description": "计算DSR"
+        },
+        {
+          "type": "wait",
+          "ms": 1000,
+          "description": "等待数据加载"
+        }
+      ]
+    },
+    {
+      "name": "17. 合同选择",
+      "actions": [
+        {
+          "type": "scroll",
+          "selector": "#iv-customer-basic-readonly",
+          "block": "center",
+          "description": "滚动到 合同"
+        },
+        {
+          "type": "click",
+          "selector": "#applicant-information div.econsent-main-row>a.view-more-link:nth-of-type(1)",
+          "description": "点击合同View More"
+        },
+        {
+          "type": "wait",
+          "ms": 200,
+          "description": "等待"
+        },
+        {
+          "type": "click",
+          "selector": "div[id^=\"vcDialogTitle\"] > div > div > div:nth-child(2)",
+          "description": "切换到手动"
+        },
+        {
+          "type": "click",
+          "selector": "div:has(div[id^=\"vcDialogTitle\"]) ~ div.ant-modal-footer> button:nth-child(2)",
+          "description": "确认切换到手动"
+        },
+        {
+          "type": "wait",
+          "ms": 200,
+          "description": "等待"
+        },
+        {
+          "type": "click",
+          "selector": "div:has(div[id^=\"vcDialogTitle\"]) div.ant-modal-footer > button:nth-of-type(2)",
+          "description": "关闭合同面板"
+        },
+        {
+          "type": "wait",
+          "ms": 200,
+          "description": "等待关闭完成"
+        },
+        {
+          "type": "condition",
+          "description": "是否关闭失败",
+          "condition": {
+            "type": "elementVisible",
+            "selector": "#vcDialogTitle1"
+          },
+          "gotoTrue": "eConsentCloseError",
+          "gotoFalse": "eConsentCloseSuccess"
+        },
+        {
+          "id": "eConsentCloseError",
+          "type": "click",
+          "selector": "div:has(div[id=\"vcDialogTitle1\"]) div.ant-modal-footer > button:nth-of-type(1)",
+          "description": "点击cancel"
+        },
+        {
+          "type": "click",
+          "selector": "div:has(div[id=\"vcDialogTitle0\"]) ~ div.ant-modal-footer  button:nth-child(1)",
+          "description": "点close"
+        },
+        {
+          "id": "eConsentCloseSuccess",
+          "type": "noop",
+          "description": "合同面板关闭成功"
+        }
+      ],
+      "runtimeBypass": true
+    }
+  ]
+}
