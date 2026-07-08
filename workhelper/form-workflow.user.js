@@ -631,6 +631,28 @@
             transform: translateX(12px);
         }
 
+        /* Manual wait icon - 手形图标 */
+        #workflow-panel .wf-manual-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 26px;
+            height: 20px;
+            font-size: 16px;
+            opacity: 0.3;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            user-select: none;
+        }
+        #workflow-panel .wf-manual-icon:hover {
+            opacity: 0.6;
+        }
+        #workflow-panel .wf-manual-icon.active {
+            opacity: 1;
+            filter: drop-shadow(0 0 4px rgba(246, 173, 85, 0.7));
+        }
+
         /* ========== Sidebar ========== */
         #workflow-panel .wf-sidebar {
             width: 240px;
@@ -4144,12 +4166,12 @@
                     if (isErrorAction) actionItemClass += ' error-action';
                     if (actionBypassed) actionItemClass += ' bypassed';
 
-                    // waitUserAction toggle
+                    // waitUserAction toggle - 使用手图标
                     const hasWaitUser = action.waitUserAction !== undefined;
                     const runtimeWaitUser = hasWaitUser ? getEffectiveActionWaitUser(stepIndex, actionIndex) : false;
                     let waitToggleHtml = '';
                     if (hasWaitUser) {
-                        waitToggleHtml = `<div class="wf-mini-switch ${runtimeWaitUser ? 'active' : ''}" data-wait-step="${stepIndex}" data-wait-action="${actionIndex}" title="等待手动操作"></div>`;
+                        waitToggleHtml = `<div class="wf-manual-icon ${runtimeWaitUser ? 'active' : ''}" data-wait-step="${stepIndex}" data-wait-action="${actionIndex}" title="等待手动操作">👋</div>`;
                     }
 
                     // Bypass toggle
@@ -4216,7 +4238,8 @@
                 header.onclick = (e) => {
                     if (e.target.classList.contains('step-exec-btn') ||
                         e.target.classList.contains('step-jump-btn') ||
-                        e.target.classList.contains('wf-mini-switch')) return;
+                        e.target.classList.contains('wf-mini-switch') ||
+                        e.target.classList.contains('wf-manual-icon')) return;
                     const idx = parseInt(header.dataset.toggleStep);
                     const stepEl = header.closest('.wf-step-item');
                     stepEl.classList.toggle('collapsed');
@@ -4257,8 +4280,8 @@
                 };
             });
 
-            // waitUserAction toggle
-            stepList.querySelectorAll('.wf-mini-switch[data-wait-step]').forEach(toggle => {
+            // waitUserAction toggle - 手形图标
+            stepList.querySelectorAll('.wf-manual-icon[data-wait-step]').forEach(toggle => {
                 toggle.onclick = (e) => {
                     e.stopPropagation();
                     const stepIndex = parseInt(toggle.dataset.waitStep);
