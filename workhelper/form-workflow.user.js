@@ -2965,7 +2965,7 @@
 
     /**
      * 自动更新检查模块
-     * 每天检查一次 GitHub Pages 上的 version.json，发现新版本时提醒用户
+     * 每小时检查一次 GitHub Pages 上的版本信息，发现新版本时提醒用户
      */
 
     // ⚠️ 需要配置：将这些 URL 改为你的实际地址
@@ -2979,8 +2979,8 @@
         // 工作流版本信息地址（GitHub Pages 上的 workflow-versions.json）
         workflowVersionsUrl: 'https://yingchengwang.github.io/pub/workhelper/workflow-versions.json',
 
-        // 检查间隔（毫秒）：24小时 = 86400000
-        checkInterval: 24 * 60 * 60 * 1000,
+        // 检查间隔（毫秒）：1小时 = 3600000
+        checkInterval: 60 * 60 * 1000,
     };
 
     // 存储键名
@@ -4554,11 +4554,33 @@
     // 使用 unsafeWindow 将函数暴露到页面全局作用域，使其可在浏览器控制台中访问
     if (typeof unsafeWindow !== 'undefined') {
         unsafeWindow.wf = {
-            clearUpdateCheck: () => GM_deleteValue('updater_lastCheck'),
+            // 清除脚本更新检查时间
+            clearScriptUpdateCheck: () => GM_deleteValue('updater_lastCheck'),
+            // 清除工作流更新检查时间
+            clearWorkflowUpdateCheck: () => GM_deleteValue('workflow_updater_lastCheck'),
+            // 清除所有更新检查时间（脚本+工作流）
+            clearUpdateCheck: () => {
+                GM_deleteValue('updater_lastCheck');
+                GM_deleteValue('workflow_updater_lastCheck');
+            },
+            // 清除已忽略的脚本版本
             clearDismissedVersion: () => GM_deleteValue('updater_dismissedVersion'),
-            forceCheckUpdate: () => {
+            // 强制检查脚本更新
+            forceCheckScriptUpdate: () => {
                 GM_deleteValue('updater_lastCheck');
                 return checkUpdate();
+            },
+            // 强制检查工作流更新
+            forceCheckWorkflowUpdate: () => {
+                GM_deleteValue('workflow_updater_lastCheck');
+                return checkWorkflowUpdate();
+            },
+            // 强制检查所有更新
+            forceCheckUpdate: () => {
+                GM_deleteValue('updater_lastCheck');
+                GM_deleteValue('workflow_updater_lastCheck');
+                checkUpdate();
+                checkWorkflowUpdate();
             }
         };
     }
