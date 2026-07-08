@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.19
+// @version      3.0.20
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -3705,6 +3705,12 @@
                                 // 覆盖现有工作流，保留 ID
                                 newWf.id = workflowList[existingIndex].id;
                                 workflowList[existingIndex] = newWf;
+
+                                // 如果更新的是当前激活的工作流，同步更新 state.workflow
+                                if (activeWorkflowId === newWf.id) {
+                                    setWorkflow(newWf);
+                                }
+
                                 addLog(`工作流「${newWf.name}」已更新`, 'success');
                             } else {
                                 workflowList.push(newWf);
@@ -3911,8 +3917,9 @@
         document.head.appendChild(updateBtnStyle);
 
         // 检查是否已检测到更新（由 index.js 统一管理）
-        const hasUpdate = window.wfHasUpdate;
-        if (hasUpdate) {
+        const hasScriptUpdate = window.wfHasUpdate;
+        const hasWorkflowUpdate = window.wfWorkflowUpdate;
+        if (hasScriptUpdate || hasWorkflowUpdate) {
             const dot = document.getElementById('update-dot');
             if (dot) dot.style.display = 'inline';
         }
@@ -4508,17 +4515,23 @@
     // 设置更新回调：当检测到新版本时，在更新按钮上显示绿点
     setUpdateCallback((result) => {
         if (result && result.hasUpdate) {
+            // 先设置全局状态，供 UI 初始化时检查
+            // 判断是脚本更新还是工作流更新
+            if (result.workflows) {
+                window.wfWorkflowUpdate = true;
+                console.log('[Update] 检测到工作流更新，设置全局状态');
+            } else {
+                window.wfHasUpdate = true;
+                console.log('[Update] 检测到脚本更新，设置全局状态');
+            }
+
+            // 尝试立即显示绿点（如果 UI 已创建）
             const dot = document.getElementById('update-dot');
             if (dot) {
                 dot.style.display = 'inline';
                 console.log('[Update] 绿点已显示');
-            }
-            // 设置全局状态，供 UI 初始化时检查
-            // 判断是脚本更新还是工作流更新
-            if (result.workflows) {
-                window.wfWorkflowUpdate = true;
             } else {
-                window.wfHasUpdate = true;
+                console.log('[Update] UI 未创建，等待 UI 初始化时显示绿点');
             }
         }
     });
