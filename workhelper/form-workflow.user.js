@@ -3600,12 +3600,30 @@
                     </div>
                 `;
                     statusEl.querySelector('#goto-update-btn').onclick = () => {
+                        // 先显示确认对话框
+                        const confirmed = confirm(
+                            `即将打开脚本安装页面\n\n` +
+                            `请在新标签页中点击「安装」更新脚本\n` +
+                            `更新完成后，请刷新当前页面\n\n` +
+                            `是否继续？`
+                        );
+                        if (!confirmed) return;
                         // 隐藏更新提示点
                         const dot = document.getElementById('update-dot');
                         if (dot) dot.style.display = 'none';
+                        // 显示持久化的刷新提示
+                        statusEl.innerHTML = `
+                        <div style="padding:20px;background:#fffaf0;border-radius:8px;border:1px solid #fbd38d;">
+                            <div style="font-size:14px;font-weight:600;color:#744210;margin-bottom:8px;">⚡ 请刷新页面</div>
+                            <div style="font-size:13px;color:#744210;margin-bottom:12px;">正在打开脚本安装页面...</div>
+                            <ol style="font-size:13px;color:#744210;margin:0;padding-left:20px;line-height:1.6;">
+                                <li>在新标签页中点击「安装」更新脚本</li>
+                                <li>更新完成后，刷新当前页面</li>
+                            </ol>
+                        </div>
+                    `;
+                        // 打开油猴界面
                         GM_openInTab(result.scriptUrl, { active: true });
-                        // 提示用户更新后需要刷新页面
-                        showToast('请在 Tampermonkey 中更新脚本后刷新页面', 'info', 5000);
                     };
                 } else {
                     // 已是最新版本，隐藏绿点
