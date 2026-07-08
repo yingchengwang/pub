@@ -1,6 +1,6 @@
 {
   "name": "我的账号登录流程-整合版",
-  "version": "1",
+  "version": "2",
   "enabled": true,
   "group": "登录",
   "order": 0,
