@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.26
+// @version      3.0.27
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -347,6 +347,10 @@
             display: none;
         }
 
+        #workflow-panel .wf-step-list-wrapper.collapsed #wf-connections {
+            display: none;
+        }
+
         #workflow-panel .wf-step-list-wrapper.collapsed .toggle-arrow {
             transform: rotate(-90deg);
         }
@@ -602,56 +606,52 @@
             background: #ebf8ff;
         }
 
-        /* Mini toggle switch */
-        #workflow-panel .wf-mini-switch {
-            position: relative;
-            width: 26px;
-            height: 14px;
-            border-radius: 7px;
-            background: #cbd5e0;
-            cursor: pointer;
-            transition: background 0.2s;
-            flex-shrink: 0;
-        }
-        #workflow-panel .wf-mini-switch.active {
-            background: #48bb78;
-        }
-        #workflow-panel .wf-mini-switch::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 10px;
-            height: 10px;
-            background: white;
-            border-radius: 50%;
-            transition: transform 0.2s;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-        }
-        #workflow-panel .wf-mini-switch.active::after {
-            transform: translateX(12px);
-        }
-
-        /* Manual wait icon - 手形图标 */
-        #workflow-panel .wf-manual-icon {
+        /* Unified toggle switch - 统一的开关样式 */
+        #workflow-panel .wf-toggle {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 26px;
+            min-width: 54px;
             height: 20px;
-            font-size: 16px;
-            opacity: 0.3;
+            padding: 0 8px;
+            background: #f0f0f0;
+            border-radius: 10px;
             cursor: pointer;
             transition: all 0.2s;
             flex-shrink: 0;
             user-select: none;
+            border: 1px solid #e2e8f0;
         }
-        #workflow-panel .wf-manual-icon:hover {
-            opacity: 0.6;
+        #workflow-panel .wf-toggle:hover {
+            background: #e8e8e8;
         }
-        #workflow-panel .wf-manual-icon.active {
-            opacity: 1;
-            filter: drop-shadow(0 0 4px rgba(246, 173, 85, 0.7));
+        #workflow-panel .wf-toggle .toggle-text {
+            font-size: 11px;
+            color: #718096;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        /* Enable toggle - active 为绿色 */
+        #workflow-panel .wf-toggle.toggle-enable.active {
+            background: #48bb78;
+            border-color: #38a169;
+        }
+        #workflow-panel .wf-toggle.toggle-enable.active .toggle-text {
+            color: white;
+        }
+        #workflow-panel .wf-toggle.toggle-enable.active:hover {
+            background: #43a047;
+        }
+        /* Manual toggle - active 为橙色 */
+        #workflow-panel .wf-toggle.toggle-manual.active {
+            background: #f6ad55;
+            border-color: #ed8936;
+        }
+        #workflow-panel .wf-toggle.toggle-manual.active .toggle-text {
+            color: white;
+        }
+        #workflow-panel .wf-toggle.toggle-manual.active:hover {
+            background: #f59e42;
         }
 
         /* ========== Sidebar ========== */
@@ -1916,9 +1916,11 @@
             // 重新开始时重置所有状态
             setLogs([]);
             setAutoContinue(true);
+            // 先检查是否已完成，再重置
+            const wasCompleted = workflowCompleted;
             setWorkflowCompleted(false);
-            // 只有在未选择步骤时才重置到0，尊重用户已跳转选择的步骤
-            if (currentStepIndex === -1) {
+            // 如果工作流已完成，重置到第一步；否则尊重用户已跳转选择的步骤
+            if (wasCompleted || currentStepIndex === -1) {
                 setCurrentStepIndex(0);
             }
             setCurrentActionIndex(-1);
@@ -2789,7 +2791,7 @@
                 </div>
                 <div style="${S.card}">
                     <h3 style="font-size:14px;font-weight:600;color:#2d3748;margin-bottom:12px;">使用说明</h3>
-                    <textarea id="ve-description" style="${S.input}height:120px;resize:vertical;font-family:inherit;line-height:1.5;" placeholder="描述此工作流的用途和使用方法...">${(wc.description || '').replace(/</g, '&lt;')}</textarea>
+                    <textarea id="ve-description" style="${S.input}height:360px;resize:vertical;font-family:inherit;line-height:1.5;" placeholder="描述此工作流的用途和使用方法...">${(wc.description || '').replace(/</g, '&lt;')}</textarea>
                 </div>
             </div>
         </div>`;
@@ -4202,16 +4204,20 @@
                     if (isErrorAction) actionItemClass += ' error-action';
                     if (actionBypassed) actionItemClass += ' bypassed';
 
-                    // waitUserAction toggle - 使用手图标
+                    // waitUserAction toggle - 手动开关
                     const hasWaitUser = action.waitUserAction !== undefined;
                     const runtimeWaitUser = hasWaitUser ? getEffectiveActionWaitUser(stepIndex, actionIndex) : false;
                     let waitToggleHtml = '';
                     if (hasWaitUser) {
-                        waitToggleHtml = `<div class="wf-manual-icon ${runtimeWaitUser ? 'active' : ''}" data-wait-step="${stepIndex}" data-wait-action="${actionIndex}" title="等待手动操作">👋</div>`;
+                        waitToggleHtml = `<div class="wf-toggle toggle-manual ${runtimeWaitUser ? 'active' : ''}" data-wait-step="${stepIndex}" data-wait-action="${actionIndex}" title="点击切换手动/自动">
+                        <span class="toggle-text">是否手动</span>
+                    </div>`;
                     }
 
-                    // Bypass toggle
-                    const bypassToggleHtml = `<div class="wf-mini-switch ${actionBypassed ? '' : 'active'}" data-bypass-step="${stepIndex}" data-bypass-action="${actionIndex}" title="启用/绕过"></div>`;
+                    // Bypass toggle - 启用开关
+                    const bypassToggleHtml = `<div class="wf-toggle toggle-enable ${actionBypassed ? '' : 'active'}" data-bypass-step="${stepIndex}" data-bypass-action="${actionIndex}" title="点击切换启用/绕过">
+                    <span class="toggle-text">是否启用</span>
+                </div>`;
 
                     // Value edit button
                     let valueEditHtml = '';
@@ -4241,10 +4247,11 @@
                     const isCondition = actionType === 'condition';
                     let connectorHtml = '';
                     if (isCondition) {
-                        connectorHtml = `
-                        <div class="wf-connector wf-connector-true" data-branch="true" data-step-idx="${stepIndex}" data-action-idx="${actionIndex}" style="position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:12px;height:12px;background:#48bb78;border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.15);z-index:10;" title="为真跳转"></div>
-                        <div class="wf-connector wf-connector-false" data-branch="false" data-step-idx="${stepIndex}" data-action-idx="${actionIndex}" style="position:absolute;right:-8px;top:50%;transform:translateY(-50%);width:12px;height:12px;background:#e53e3e;border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.15);z-index:10;" title="为假跳转"></div>
-                    `;
+                        const alwaysTrue = action.condition?.type === 'alwaysTrue';
+                        const alwaysFalse = action.condition?.type === 'alwaysFalse';
+                        const trueConnector = !alwaysFalse ? `<div class="wf-connector wf-connector-true" data-branch="true" data-step-idx="${stepIndex}" data-action-idx="${actionIndex}" style="position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:12px;height:12px;background:#48bb78;border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.15);z-index:10;" title="为真跳转"></div>` : '';
+                        const falseConnector = !alwaysTrue ? `<div class="wf-connector wf-connector-false" data-branch="false" data-step-idx="${stepIndex}" data-action-idx="${actionIndex}" style="position:absolute;right:-8px;top:50%;transform:translateY(-50%);width:12px;height:12px;background:#e53e3e;border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.15);z-index:10;" title="为假跳转"></div>` : '';
+                        connectorHtml = trueConnector + falseConnector;
                     }
 
                     return `
@@ -4268,7 +4275,9 @@
                         <span class="wf-step-toggle">▼</span>
                         <span class="wf-step-name">${step.name}</span>
                         <div class="wf-step-controls">
-                            <div class="wf-mini-switch ${stepBypassed ? '' : 'active'} bypass-step-toggle" data-bypass-step="${stepIndex}" title="启用/绕过"></div>
+                            <div class="wf-toggle toggle-enable ${stepBypassed ? '' : 'active'} bypass-step-toggle" data-bypass-step="${stepIndex}" title="点击切换启用/绕过">
+                                <span class="toggle-text">是否启用</span>
+                            </div>
                             <button class="wf-step-ctrl-btn step-jump-btn" data-step="${stepIndex}" title="跳转">📍</button>
                             <button class="wf-step-ctrl-btn step-exec-btn" data-step="${stepIndex}" title="执行">▶</button>
                         </div>
@@ -4283,8 +4292,8 @@
                 header.onclick = (e) => {
                     if (e.target.classList.contains('step-exec-btn') ||
                         e.target.classList.contains('step-jump-btn') ||
-                        e.target.classList.contains('wf-mini-switch') ||
-                        e.target.classList.contains('wf-manual-icon')) return;
+                        e.target.classList.contains('wf-toggle') ||
+                        e.target.closest('.wf-toggle')) return;
                     const idx = parseInt(header.dataset.toggleStep);
                     const stepEl = header.closest('.wf-step-item');
                     stepEl.classList.toggle('collapsed');
@@ -4325,8 +4334,8 @@
                 };
             });
 
-            // waitUserAction toggle - 手形图标
-            stepList.querySelectorAll('.wf-manual-icon[data-wait-step]').forEach(toggle => {
+            // waitUserAction toggle - 手动开关
+            stepList.querySelectorAll('.wf-toggle.toggle-manual[data-wait-step]').forEach(toggle => {
                 toggle.onclick = (e) => {
                     e.stopPropagation();
                     const stepIndex = parseInt(toggle.dataset.waitStep);
@@ -4374,9 +4383,9 @@
                 };
             });
 
-            // 动作绕过开关
-            stepList.querySelectorAll('.wf-mini-switch[data-bypass-step][data-bypass-action]').forEach(toggle => {
-                if (toggle.dataset.waitStep) return; // skip wait toggles
+            // 动作启用开关
+            stepList.querySelectorAll('.wf-toggle.toggle-enable[data-bypass-step][data-bypass-action]').forEach(toggle => {
+                if (toggle.dataset.waitStep) return; // skip manual toggles
                 toggle.onclick = (e) => {
                     e.stopPropagation();
                     const stepIndex = parseInt(toggle.dataset.bypassStep);
