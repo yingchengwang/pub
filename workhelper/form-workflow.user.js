@@ -3719,19 +3719,20 @@
                             // 隐藏更新提示点
                             const dot = document.getElementById('update-dot');
                             if (dot) dot.style.display = 'none';
-                            // 显示持久化的刷新提示
-                            statusEl.innerHTML = `
-                            <div style="padding:20px;background:#fffaf0;border-radius:8px;border:1px solid #fbd38d;">
-                                <div style="font-size:14px;font-weight:600;color:#744210;margin-bottom:8px;">⚡ 请刷新页面</div>
-                                <div style="font-size:13px;color:#744210;margin-bottom:12px;">正在打开脚本安装页面...</div>
-                                <ol style="font-size:13px;color:#744210;margin:0;padding-left:20px;line-height:1.6;">
-                                    <li>在新标签页中点击「安装」更新脚本</li>
-                                    <li>更新完成后，刷新当前页面</li>
-                                </ol>
-                            </div>
-                        `;
                             // 打开油猴界面
                             GM_openInTab(result.scriptUrl, { active: true });
+                            // 在确认按钮后面添加刷新按钮
+                            const confirmBtn = statusEl.querySelector('#confirm-update-btn');
+                            if (confirmBtn && !statusEl.querySelector('#refresh-page-btn')) {
+                                const refreshBtn = document.createElement('button');
+                                refreshBtn.id = 'refresh-page-btn';
+                                refreshBtn.textContent = '刷新页面';
+                                refreshBtn.style.cssText = 'padding:10px 24px;border:none;background:#4299e1;color:white;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 4px rgba(66,153,225,0.3);';
+                                refreshBtn.onclick = () => {
+                                    location.reload();
+                                };
+                                confirmBtn.parentNode.insertBefore(refreshBtn, confirmBtn.nextSibling);
+                            }
                         };
                     };
                 } else {
