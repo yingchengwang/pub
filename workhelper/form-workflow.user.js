@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.23
+// @version      3.0.24
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -2425,10 +2425,10 @@
     }
 
     function updateWorkflowInfoDisplay() {
-        const nameEl = document.querySelector('#workflow-panel .workflow-name');
+        const nameEl = document.querySelector('#workflow-panel .wf-name');
         if (nameEl && workflow) {
             const groupTag = workflow.group ? ` <span style="font-size:10px;opacity:0.7;background:rgba(255,255,255,0.15);padding:1px 5px;border-radius:3px;">${escapeHtml(workflow.group)}</span>` : '';
-            nameEl.innerHTML = `📋 ${escapeHtml(workflow.name)}${groupTag} <span class="workflow-config-version" id="workflow-config-version">v${escapeHtml(workflow.version || '1.0.0')}</span>`;
+            nameEl.innerHTML = `📋 ${escapeHtml(workflow.name)}${groupTag} <span id="workflow-config-version" style="font-size:10px;color:#a0aec0;">v${escapeHtml(workflow.version || '1.0.0')}</span>`;
         }
     }
 
