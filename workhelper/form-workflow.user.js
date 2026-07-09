@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.24
+// @version      3.0.25
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -1906,7 +1906,10 @@
             setLogs([]);
             setAutoContinue(true);
             setWorkflowCompleted(false);
-            setCurrentStepIndex(0);
+            // 只有在未选择步骤时才重置到0，尊重用户已跳转选择的步骤
+            if (currentStepIndex === -1) {
+                setCurrentStepIndex(0);
+            }
             setCurrentActionIndex(-1);
             addLog(`开始执行工作流: ${workflow.name} (自动继续模式)`, 'info');
         } else {
