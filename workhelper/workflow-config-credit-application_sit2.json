@@ -1,6 +1,6 @@
 {
   "name": "sit2信贷申请流程",
-  "version": "33",
+  "version": "34",
   "enabled": true,
   "group": "新建订单",
   "order": 2,
@@ -577,7 +577,7 @@
         {
           "type": "select",
           "selector": "#form_item_dealerCode",
-          "value": "98140000101",
+          "value": ["98140000101","82410000101"],
           "description": "选择经销商代码",
           "waitAfterClick": 800
         },

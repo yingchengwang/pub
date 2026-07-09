@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.25
+// @version      3.0.26
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -1414,13 +1414,16 @@
         // 通用下拉框选择
         select: async function(action, variables, config) {
             const selector = replaceVariables(action.selector, variables);
-            const value = replaceVariables(getActionValue(action), variables);
+            const rawValue = replaceVariables(getActionValue(action), variables);
             const index = action.index || 0;
             const waitAfterClick = action.waitAfterClick || 500;
             const maxAttempts = action.maxAttempts || 3;
 
+            // 规范化值：支持字符串或字符串数组
+            const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+
             console.log('[select] 开始执行下拉选择');
-            console.log('[select] selector:', selector, 'value:', value);
+            console.log('[select] selector:', selector, 'values:', values);
 
             let triggerElement = await getElement(selector, 5000, index);
 
@@ -1429,23 +1432,27 @@
                 await simulateClick(triggerElement);
                 await sleep(waitAfterClick);
 
-                let found = false;
+                let foundValue = null;
                 const options = triggerElement.querySelectorAll('option');
-                for (const option of options) {
-                    if (option.value === value || option.textContent.trim() === value) {
-                        triggerElement.value = option.value;
-                        found = true;
-                        break;
+                for (const value of values) {
+                    for (const option of options) {
+                        if (option.value === value || option.textContent.trim() === value) {
+                            triggerElement.value = option.value;
+                            foundValue = value;
+                            break;
+                        }
                     }
+                    if (foundValue) break;
                 }
 
-                if (found) {
+                if (foundValue) {
                     triggerElement.dispatchEvent(new Event('change', { bubbles: true }));
-                    addLog(`✓ 选择选项: ${value}`, 'success');
+                    const allValues = values.length > 1 ? ` [尝试: ${values.join(', ')}]` : '';
+                    addLog(`✓ 选择选项: ${foundValue}${allValues}`, 'success');
                     return;
                 } else {
-                    addLog(`✗ 未找到选项: ${value}`, 'error');
-                    throw new Error(`未找到选项: ${value}`);
+                    addLog(`✗ 未找到选项: ${values.join(', ')}`, 'error');
+                    throw new Error(`未找到选项: ${values.join(', ')}`);
                 }
             }
 
@@ -1498,7 +1505,7 @@
                 throw new Error('下拉框打开失败，无法选择选项');
             }
 
-            // 查找并点击选项
+            // 查找并点击选项（支持多个备选值）
             const findOption = () => {
                 const optionSelectors = [
                     '[role="option"]',
@@ -1527,8 +1534,11 @@
                                                option.getAttribute('value') ||
                                                option.getAttribute('title') || '';
 
-                            if (optionText === value || optionValue === value) {
-                                return option;
+                            // 尝试匹配任何一个备选值
+                            for (const value of values) {
+                                if (optionText === value || optionValue === value) {
+                                    return { element: option, matchedValue: value };
+                                }
                             }
                         }
                     }
@@ -1536,25 +1546,26 @@
                 return null;
             };
 
-            let targetOption = findOption();
+            let targetResult = findOption();
 
-            if (!targetOption) {
+            if (!targetResult) {
                 const scrollContainer = dropdown.querySelector('[style*="overflow"], .rc-virtual-list-holder, .el-virtual-scroll, .scrollbar');
                 if (scrollContainer) {
                     scrollContainer.scrollTop = 0;
                     await sleep(300);
-                    targetOption = findOption();
+                    targetResult = findOption();
                 }
             }
 
-            if (targetOption) {
-                await simulateClick(targetOption);
+            if (targetResult) {
+                await simulateClick(targetResult.element);
                 await sleep(300);
-                addLog(`✓ 选择选项: ${value}`, 'success');
+                const allValues = values.length > 1 ? ` [尝试: ${values.join(', ')}]` : '';
+                addLog(`✓ 选择选项: ${targetResult.matchedValue}${allValues}`, 'success');
             } else {
-                addLog(`✗ 未找到选项: ${value}`, 'error');
+                addLog(`✗ 未找到选项: ${values.join(', ')}`, 'error');
                 clickableTarget.click();
-                throw new Error(`未找到选项: ${value}`);
+                throw new Error(`未找到选项: ${values.join(', ')}`);
             }
         },
 
@@ -3453,11 +3464,14 @@
         valueEditModal.className = 'wf-modal';
         valueEditModal.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;background:rgba(0,0,0,0.4);display:none;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
         valueEditModal.innerHTML = `
-        <div class="wf-modal-dialog" style="background:white;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.2);padding:20px;min-width:300px;max-width:380px;animation:wfModalFadeIn 0.15s ease-out;">
+        <div class="wf-modal-dialog" style="background:white;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.2);padding:20px;min-width:300px;max-width:420px;animation:wfModalFadeIn 0.15s ease-out;">
             <div style="font-size:15px;font-weight:600;color:#1a202c;margin-bottom:14px;">✏️ 修改值</div>
-            <div style="margin-bottom:16px;">
+            <div style="margin-bottom:12px;">
                 <label for="value-edit-input" style="display:block;font-size:12px;color:#4a5568;margin-bottom:4px;">新值:</label>
-                <input type="text" id="value-edit-input" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;outline:none;transition:border-color 0.15s;" placeholder="输入新值...">
+                <input type="text" id="value-edit-input" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;outline:none;transition:border-color 0.15s;" placeholder="输入新值，数组格式如: [&quot;a&quot;, &quot;b&quot;]">
+            </div>
+            <div style="font-size:11px;color:#718096;margin-bottom:14px;line-height:1.4;">
+                💡 提示：select 类型支持数组格式，尝试多个值直到匹配，如 <code style="background:#f7fafc;padding:1px 4px;border-radius:3px;">[&quot;选项1&quot;, &quot;选项2&quot;]</code>
             </div>
             <div style="display:flex;justify-content:flex-end;gap:8px;">
                 <button id="value-edit-cancel" style="padding:6px 14px;border:1px solid #e2e8f0;background:white;border-radius:6px;font-size:12px;cursor:pointer;color:#4a5568;">取消</button>
@@ -3479,15 +3493,33 @@
         function confirmValueEdit() {
             if (!currentValueEditAction) return;
             const input = document.getElementById('value-edit-input');
-            const newValue = input.value.trim();
-            if (newValue) {
-                const { stepIndex, actionIndex } = currentValueEditAction;
-                const action = workflow.steps[stepIndex].actions[actionIndex];
-                setActionOverride(activeWorkflowId, stepIndex, actionIndex, 'value', newValue);
-                saveState();
-                updateUI();
-                addLog(`已修改值: ${action.description || action.type} -> ${newValue}`, 'info');
+            const rawValue = input.value.trim();
+            if (!rawValue) {
+                closeValueEditModal();
+                return;
             }
+
+            // 尝试解析为数组（JSON 格式）
+            let newValue = rawValue;
+            if (rawValue.startsWith('[') && rawValue.endsWith(']')) {
+                try {
+                    const parsed = JSON.parse(rawValue);
+                    if (Array.isArray(parsed)) {
+                        newValue = parsed;
+                    }
+                } catch (e) {
+                    // 解析失败，使用原始字符串
+                    console.warn('值编辑 JSON 解析失败，使用原始字符串:', e);
+                }
+            }
+
+            const { stepIndex, actionIndex } = currentValueEditAction;
+            const action = workflow.steps[stepIndex].actions[actionIndex];
+            setActionOverride(activeWorkflowId, stepIndex, actionIndex, 'value', newValue);
+            saveState();
+            updateUI();
+            const displayValue = Array.isArray(newValue) ? `[${newValue.join(', ')}]` : newValue;
+            addLog(`已修改值: ${action.description || action.type} -> ${displayValue}`, 'info');
             closeValueEditModal();
         }
 
@@ -4185,7 +4217,16 @@
                     let valueEditHtml = '';
                     if (actionType === 'fill' || actionType === 'select') {
                         const currentValue = getEffectiveActionValue(stepIndex, actionIndex);
-                        valueEditHtml = `<button class="wf-action-sm-btn edit-btn action-value-edit-btn" data-step="${stepIndex}" data-action="${actionIndex}">✏ ${escapeHtml(String(currentValue).substring(0, 8))}</button>`;
+                        // 格式化显示值（数组显示为简写形式）
+                        const formatValue = (val) => {
+                            if (Array.isArray(val)) {
+                                if (val.length === 0) return '[]';
+                                if (val.length === 1) return `[${val[0]}]`;
+                                return `[${val[0]}...]`; // 显示第一个元素并省略其他
+                            }
+                            return String(val);
+                        };
+                        valueEditHtml = `<button class="wf-action-sm-btn edit-btn action-value-edit-btn" data-step="${stepIndex}" data-action="${actionIndex}">✏ ${escapeHtml(formatValue(currentValue).substring(0, 10))}</button>`;
                     }
 
                     // Highlight button
@@ -4309,7 +4350,9 @@
                     setCurrentValueEditAction({ stepIndex, actionIndex });
                     const modal = document.getElementById('value-edit-modal');
                     const input = document.getElementById('value-edit-input');
-                    input.value = getEffectiveActionValue(stepIndex, actionIndex) || '';
+                    const currentValue = getEffectiveActionValue(stepIndex, actionIndex);
+                    // 数组值显示为 JSON 字符串
+                    input.value = Array.isArray(currentValue) ? JSON.stringify(currentValue) : (currentValue || '');
                     modal.style.display = 'flex';
                     input.focus();
                     input.select();

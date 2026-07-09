@@ -1,7 +1,7 @@
 {
   "workflows": {
     "sit2信贷申请流程": {
-      "version": "33",
+      "version": "34",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit2.json",
       "changelog": "- 修复多个步骤的异常"
     },
