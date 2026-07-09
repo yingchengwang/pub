@@ -1,6 +1,6 @@
 {
   "name": "sit2信贷申请流程",
-  "version": "32",
+  "version": "33",
   "enabled": true,
   "group": "新建订单",
   "order": 2,
@@ -93,6 +93,30 @@
           "value": "${mobilePhoneNo}",
           "description": "输入手机号",
           "waitUserAction": false
+        },
+        {
+          "type": "condition",
+          "description": "检查用户名输入",
+          "condition": {
+            "type": "elementAttribute",
+            "selector": "#iv-customer-basic-editable + form div:has(label[title=\"Customer Name\"]) + div input",
+            "attribute": "value",
+            "match": "empty"
+          },
+          "gotoTrue": "secondFillUserName",
+          "gotoFalse": "fillUserNameSuccess"
+        },
+        {
+          "id": "secondFillUserName",
+          "type": "fill",
+          "selector": "#iv-customer-basic-editable + form div:has(label[title=\"Customer Name\"]) + div input",
+          "value": "${customerName}",
+          "description": "二次输入姓名"
+        },
+        {
+          "id": "fillUserNameSuccess",
+          "type": "noop",
+          "description": "姓名输入成功"
         }
       ]
     },
@@ -265,13 +289,13 @@
       "actions": [
         {
           "type": "scroll",
-          "selector": "div label[title=\"Address Type\",for=\"form_item_addressList_1_addressType\"]",
+          "selector": "div:has(#home-address) + div label[for*=\"addressType\"]",
           "block": "center",
           "description": "滚动到 Work Address"
         },
         {
           "type": "click",
-          "selector": "div:has(label[for=\"form_item_addressList_1_addressType\"]) + div div:has(label[title=\"Postcode\"]) + div  span.ant-select-selection-item",
+          "selector": "div:has(#home-address) + div.app-sub-module-container > form > form div:has(label[title=\"Postcode\"]) + div input",
           "description": "点击PostCode"
         },
         {
