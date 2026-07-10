@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.27
+// @version      3.0.28
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -1076,6 +1076,12 @@
 
     function replaceVariables(str, variables) {
         if (typeof str !== 'string') return str;
+        // 整个字符串就是单个变量引用时，直接返回原始值（保留数组、数字等类型，避免被 replace 强转成字符串）
+        const singleVarMatch = str.match(/^\$\{(\w+)\}$/);
+        if (singleVarMatch) {
+            const key = singleVarMatch[1];
+            return variables[key] !== undefined ? variables[key] : str;
+        }
         return str.replace(/\$\{(\w+)\}/g, (match, key) => {
             return variables[key] !== undefined ? variables[key] : match;
         });
