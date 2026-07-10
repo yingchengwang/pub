@@ -1,6 +1,6 @@
 {
   "name": "sit2信贷申请流程",
-  "version": "35",
+  "version": "36",
   "enabled": true,
   "group": "新建订单",
   "order": 2,
@@ -727,11 +727,23 @@
           "description": "滚动到 收入"
         },
         {
+          "type": "condition",
+          "description": "是否刷新收入",
+          "condition": {
+            "type": "elementVisible",
+            "selector": "#applicant-income > div > button:nth-child(2)"
+          },
+          "gotoTrue": "refreshInCome",
+          "gotoFalse": "chooseDoc"
+        },
+        {
+          "id": "refreshInCome",
           "type": "click",
           "selector": "#applicant-income > div > button:nth-child(2)",
           "description": "刷新收入"
         },
         {
+          "id": "chooseDoc",
           "type": "click",
           "selector": "#applicant-income + form > section div:has(label[title=\"Primary Income Doc\"]) + div input",
           "description": "click选择Doc"
@@ -802,6 +814,17 @@
           "description": "滚动到 IR"
         },
         {
+          "type": "condition",
+          "description": "判断前端IR布局",
+          "condition": {
+            "type": "elementVisible",
+            "selector": "#facility-financing > div > div form div:has(label[title=\"Proposed Rate By\"]) ~ div div.segmented-item:nth-of-type(3)"
+          },
+          "gotoTrue": "ir1",
+          "gotoFalse": "ir2"
+        },
+        {
+          "id": "ir1",
           "type": "click",
           "selector": "#facility-financing > div > div form div:has(label[title=\"Proposed Rate By\"]) ~ div div.segmented-item:nth-of-type(3)",
           "description": "选择IR"
@@ -818,6 +841,33 @@
           "description": "计算"
         },
         {
+          "type": "condition",
+          "description": "直接等待",
+          "condition": {
+            "type": "alwaysTrue"
+          },
+          "gotoTrue": "irWait",
+          "gotoFalse": ""
+        },
+        {
+          "id": "ir2",
+          "type": "click",
+          "selector": "#facility-financing > div > div form div:has(label[title=\"Proposed Rate By\"]) ~ div div.segmented-item:nth-of-type(2)",
+          "description": "选择IR"
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_proposedInterestRateEir",
+          "value": "${proposedInterestRate}",
+          "description": "利率"
+        },
+        {
+          "type": "click",
+          "selector": "div:has(>div > div.ant-form-item > div > div > label[title=\"Proposed Rate By\"]) > div:nth-of-type(4) button",
+          "description": "计算"
+        },
+        {
+          "id": "irWait",
           "type": "wait",
           "ms": 1000,
           "description": "等待数据加载"

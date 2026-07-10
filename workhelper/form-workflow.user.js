@@ -3024,8 +3024,8 @@
         // 工作流版本信息地址（GitHub Pages 上的 workflow-versions.json）
         workflowVersionsUrl: 'https://yingchengwang.github.io/pub/workhelper/workflow-versions.json',
 
-        // 检查间隔（毫秒）：1小时 = 3600000
-        checkInterval: 60 * 60 * 1000,
+        // 检查间隔（毫秒）：20分钟 = 1200000
+        checkInterval: 20 * 60 * 1000,
     };
 
     // 存储键名
