@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.28
+// @version      3.0.29
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -3255,6 +3255,7 @@
                     version: info.version,
                     url: info.url,
                     changelog: info.changelog,
+                    updatedAt: info.updatedAt || null,
                     localVersion: localWf?.version || null,
                     hasUpdate: localWf && isNewer(info.version, localWf.version || '0'),
                     isInstalled: !!localWf
@@ -3806,7 +3807,7 @@
                         <div style="flex:1;min-width:0;">
                             <div style="font-size:14px;font-weight:600;color:#1a202c;margin-bottom:4px;">${escapeHtml(wf.name)}</div>
                             <div style="font-size:12px;color:#718096;">
-                                云端 v${wf.version}${wf.localVersion ? ` | 本地 v${wf.localVersion}` : ''}
+                                云端 v${wf.version}${wf.localVersion ? ` | 本地 v${wf.localVersion}` : ''}${wf.updatedAt ? ` | 更新于 ${escapeHtml(wf.updatedAt)}` : ''}
                             </div>
                             ${wf.changelog ? `<div style="font-size:12px;color:#4a5568;margin-top:4px;white-space:pre-line;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(wf.changelog)}</div>` : ''}
                         </div>

@@ -2,21 +2,25 @@
   "workflows": {
     "sit2信贷申请流程": {
       "version": "36",
+      "updatedAt": "2026-07-10",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit2.json",
       "changelog": "- 修复多个步骤的异常; \n - 建议在变量管理中修改变量值；"
     },
     "sit1信贷申请流程": {
       "version": "31",
+      "updatedAt": "2026-06-15",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit1.json",
       "changelog": "- 初始版本"
     },
     "dev1信贷申请流程": {
       "version": "31",
+      "updatedAt": "2026-06-15",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_dev1.json",
       "changelog": "- 初始版本"
     },
     "我的账号登录流程-整合版": {
       "version": "2",
+      "updatedAt": "2026-06-25",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-login.json",
       "changelog": "- 请注意替换自己的账号密码；\n - 建议在变量管理中修改变量值；"
     }
