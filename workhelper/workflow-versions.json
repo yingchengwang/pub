@@ -1,16 +1,16 @@
 {
   "workflows": {
     "sit2信贷申请流程": {
-      "version": "36",
+      "version": "37",
       "updatedAt": "2026-07-10",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit2.json",
-      "changelog": "- 修复多个步骤的异常; \n - 建议在变量管理中修改变量值；"
+      "changelog": "- 对sit1兼容了下; \n - 建议在变量管理中修改变量值；"
     },
     "sit1信贷申请流程": {
-      "version": "31",
-      "updatedAt": "2026-06-15",
+      "version": "37",
+      "updatedAt": "2026-07-10",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit1.json",
-      "changelog": "- 初始版本"
+      "changelog": "- 从sit2同步过来； \n - 建议在变量管理中修改变量值；"
     },
     "dev1信贷申请流程": {
       "version": "31",

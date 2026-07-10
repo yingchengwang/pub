@@ -1,6 +1,6 @@
 {
   "name": "sit2信贷申请流程",
-  "version": "36",
+  "version": "37",
   "enabled": true,
   "group": "新建订单",
   "order": 2,
@@ -13,7 +13,7 @@
     "deliveryChannel": "H29 - ALC SEREMBAN",
     "loanProposal": "Leong Yi Ying(1245026)",
     "closingBranch": "Taman Tampoi Indah Branch",
-    "branchManager": "jenniwei (jenniwei)",
+    "branchManager": ["jenniwei (jenniwei)","shibozou (shibozou)"],
     "maritalStatus": "Single",
     "race": "Malay",
     "noOfDependents": "3",
