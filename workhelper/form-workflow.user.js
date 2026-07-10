@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.29
+// @version      3.0.30
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -3087,6 +3087,7 @@
                 current: currentVersion,
                 latest: data.version,
                 changelog: data.changelog,
+                updatedAt: data.updatedAt || null,
                 scriptUrl: CONFIG.scriptUrl
             };
         } catch (e) {
@@ -3524,12 +3525,55 @@
 
             const { stepIndex, actionIndex } = currentValueEditAction;
             const action = workflow.steps[stepIndex].actions[actionIndex];
-            setActionOverride(activeWorkflowId, stepIndex, actionIndex, 'value', newValue);
-            saveState();
-            updateUI();
             const displayValue = Array.isArray(newValue) ? `[${newValue.join(', ')}]` : newValue;
-            addLog(`已修改值: ${action.description || action.type} -> ${displayValue}`, 'info');
-            closeValueEditModal();
+
+            // 检测当前生效值（override 优先）是否是单一变量引用，如 ${mobilePhoneNo}
+            const currentValue = getEffectiveActionValue(stepIndex, actionIndex);
+            const varRefMatch = typeof currentValue === 'string' && currentValue.match(/^\$\{(\w+)\}$/);
+            // 新值本身也是变量引用时（如用户输入 ${username}），不触发修改变量的弹窗，直接写 override
+            const newValueIsVarRef = typeof newValue === 'string' && /^\$\{(\w+)\}$/.test(newValue);
+
+            if (varRefMatch && !newValueIsVarRef) {
+                const varName = varRefMatch[1];
+                closeValueEditModal();
+                showConfirm(
+                    `是否修改变量 <code style="background:#f7fafc;padding:1px 5px;border-radius:3px;font-size:13px;">\${${varName}}</code> 的值？` +
+                    `<div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">` +
+                    `<div style="font-size:13px;color:#4a5568;background:#f7fafc;border-radius:6px;padding:7px 10px;">` +
+                    `<strong style="color:#2d3748;">仅改当前：</strong>只覆盖此动作，不影响其他引用该变量的动作</div>` +
+                    `<div style="font-size:13px;color:#4a5568;background:#f7fafc;border-radius:6px;padding:7px 10px;">` +
+                    `<strong style="color:#2d3748;">修改变量：</strong>同时影响所有引用 \${${varName}} 的动作</div>` +
+                    `</div>`,
+                    {
+                        title: '修改方式',
+                        confirmText: '修改变量',
+                        cancelText: '仅改当前',
+                        type: 'info'
+                    }
+                ).then(modifyVar => {
+                    if (modifyVar) {
+                        // 修改变量值，影响所有引用该变量的动作
+                        workflow.variables[varName] = newValue;
+                        // 同步到 workflowList
+                        const wfInList = workflowList.find(w => w.id === activeWorkflowId);
+                        if (wfInList) wfInList.variables[varName] = newValue;
+                        saveWorkflowList();
+                        addLog(`已修改变量 ${varName} -> ${displayValue}`, 'info');
+                    } else {
+                        // 仅覆盖当前 action
+                        setActionOverride(activeWorkflowId, stepIndex, actionIndex, 'value', newValue);
+                        addLog(`已修改值(覆盖): ${action.description || action.type} -> ${displayValue}`, 'info');
+                    }
+                    saveState();
+                    updateUI();
+                });
+            } else {
+                setActionOverride(activeWorkflowId, stepIndex, actionIndex, 'value', newValue);
+                saveState();
+                updateUI();
+                addLog(`已修改值: ${action.description || action.type} -> ${displayValue}`, 'info');
+                closeValueEditModal();
+            }
         }
 
         // 创建说明模态框
@@ -3660,6 +3704,7 @@
                     </div>
                     <div style="padding:12px;background:#ebf8ff;border-radius:8px;border:1px solid #90cdf4;margin-bottom:16px;">
                         <div style="font-size:13px;font-weight:600;color:#2c5282;margin-bottom:6px;">📝 更新内容：</div>
+                        ${result.updatedAt ? `<div style="font-size:12px;color:#38a169;margin-bottom:6px;">更新于 ${result.updatedAt}</div>` : ''}
                         <div style="font-size:13px;color:#2a4365;white-space:pre-line;">${result.changelog || '详见更新日志'}</div>
                     </div>
                     <div style="display:flex;justify-content:center;gap:10px;">
@@ -3712,6 +3757,7 @@
                             </div>
                             <div style="padding:12px;background:#ebf8ff;border-radius:8px;border:1px solid #90cdf4;margin-bottom:16px;">
                                 <div style="font-size:13px;font-weight:600;color:#2c5282;margin-bottom:6px;">📝 更新内容：</div>
+                                ${result.updatedAt ? `<div style="font-size:12px;color:#38a169;margin-bottom:6px;">更新于 ${result.updatedAt}</div>` : ''}
                                 <div style="font-size:13px;color:#2a4365;white-space:pre-line;">${result.changelog || '详见更新日志'}</div>
                             </div>
                             <div style="display:flex;justify-content:center;gap:10px;">
@@ -3807,7 +3853,7 @@
                         <div style="flex:1;min-width:0;">
                             <div style="font-size:14px;font-weight:600;color:#1a202c;margin-bottom:4px;">${escapeHtml(wf.name)}</div>
                             <div style="font-size:12px;color:#718096;">
-                                云端 v${wf.version}${wf.localVersion ? ` | 本地 v${wf.localVersion}` : ''}${wf.updatedAt ? ` | 更新于 ${escapeHtml(wf.updatedAt)}` : ''}
+                                云端 v${wf.version}${wf.localVersion ? ` | 本地 v${wf.localVersion}` : ''}${wf.updatedAt ? `<span style="color:#38a169;"> | 更新于 ${escapeHtml(wf.updatedAt)}</span>` : ''}
                             </div>
                             ${wf.changelog ? `<div style="font-size:12px;color:#4a5568;margin-top:4px;white-space:pre-line;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(wf.changelog)}</div>` : ''}
                         </div>
