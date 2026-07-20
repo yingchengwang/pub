@@ -1,6 +1,6 @@
 {
   "name": "sit2信贷申请流程",
-  "version": "37",
+  "version": "38",
   "enabled": true,
   "group": "新建订单",
   "order": 2,
@@ -38,7 +38,7 @@
     "familyCode": "A3 2.0(A)",
     "modelReference": "1.4 TFSI SEDAN S-Tronic FWD Petrol 8V",
     "manufactureYear": "2025",
-    "dealerCode": ["98140000101","82410000101"],
+    "dealerCode": "98140000101",
     "tenure": "12",
     "handlingFee": "12",
     "proposedInterestRate": "4",
@@ -608,11 +608,30 @@
           "description": "滚动到 dealer-info"
         },
         {
-          "type": "select",
+          "type": "click",
           "selector": "#form_item_dealerCode",
+          "description": "点击经销商代码"
+        },
+        {
+          "type": "fill",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.search-wrapper input[placeholder=\"Search Dealer Code\"]",
           "value": "${dealerCode}",
-          "description": "选择经销商代码",
-          "waitAfterClick": 800
+          "description": "输入经销商代码"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.search-wrapper div.ant-form-item-control-input-content button",
+          "description": "点击搜索"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.ant-modal-content > div.ant-modal-body > div.ant-table-wrapper div.ant-table-body>table >tbody>tr:nth-of-type(2) > td:nth-of-type(1) input[type=\"radio\"]",
+          "description": "选中"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.ant-modal-footer>button",
+          "description": "点击OK"
         },
         {
           "type": "fill",
