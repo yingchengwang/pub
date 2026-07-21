@@ -1,6 +1,6 @@
 {
   "name": "sit2信贷申请流程",
-  "version": "38",
+  "version": "39",
   "enabled": true,
   "group": "新建订单",
   "order": 2,
@@ -624,14 +624,29 @@
           "description": "点击搜索"
         },
         {
+          "type": "wait",
+          "ms": 400,
+          "description": "等待"
+        },
+        {
           "type": "click",
           "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.ant-modal-content > div.ant-modal-body > div.ant-table-wrapper div.ant-table-body>table >tbody>tr:nth-of-type(2) > td:nth-of-type(1) input[type=\"radio\"]",
           "description": "选中"
         },
         {
+          "type": "wait",
+          "ms": 200,
+          "description": "等待"
+        },
+        {
           "type": "click",
           "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.ant-modal-footer>button",
           "description": "点击OK"
+        },
+        {
+          "type": "wait",
+          "ms": 200,
+          "description": "等待"
         },
         {
           "type": "fill",
@@ -812,7 +827,7 @@
         },
         {
           "type": "click",
-          "selector": "div.ant-input-number:has(div > #form_item_tenure) > div:nth-of-type(1) > span[role=\"button\"]:nth-of-type(2)",
+          "selector": "div.ant-input-number:has(div > #form_item_tenure) > div:nth-of-type(1) > span[role=\"button\"]:nth-of-type(1)",
           "description": "避免期限爆红"
         },
         {

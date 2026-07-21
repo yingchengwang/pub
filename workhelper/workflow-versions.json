@@ -1,16 +1,16 @@
 {
   "workflows": {
     "sit2信贷申请流程": {
-      "version": "38",
-      "updatedAt": "2026-07-20",
+      "version": "39",
+      "updatedAt": "2026-07-21",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit2.json",
-      "changelog": "- 调整Dealer Code选择方式，适配前端; \n - ！！！建议在变量管理中修改变量值！！！；"
+      "changelog": "- 优化Dealer Code选太快选不上的问题; \n - 建议在变量管理中修改变量值；"
     },
     "sit1信贷申请流程": {
       "version": "37",
       "updatedAt": "2026-07-10",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit1.json",
-      "changelog": "- 从sit2同步过来； \n - ！！！建议在变量管理中修改变量值！！！；"
+      "changelog": "- 从sit2同步过来； \n - 建议在变量管理中修改变量值；"
     },
     "dev1信贷申请流程": {
       "version": "31",
@@ -22,7 +22,7 @@
       "version": "2",
       "updatedAt": "2026-06-25",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-login.json",
-      "changelog": "- ！！！请注意替换自己的账号密码！！！；\n - ！！！建议在变量管理中修改变量值！！！；"
+      "changelog": "- 请注意替换自己的账号密码；\n - 建议在变量管理中修改变量值；"
     }
   }
 }
