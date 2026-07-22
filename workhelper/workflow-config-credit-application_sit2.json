@@ -1,9 +1,12 @@
 {
   "name": "sit2信贷申请流程",
-  "version": "39",
+  "version": "40",
   "enabled": true,
   "group": "新建订单",
   "order": 2,
+  "urlMatchers": [
+    { "match": ["sit2", "crediosweb"], "exclude": ["cas/login"] }
+  ],
   "description": "信贷申请自动填写工作流\n\n使用步骤：\n1. 打开信贷系统的case pool页面，关闭页面其他标签页避免数量超出\n2. 点击「开始执行」按钮\n3. 脚本会自动填写表单各字段\n4. 遇到标记为「手动」的操作时，请手动完成后点击「继续」\n5. 如遇错误，可手动处理后点击「继续」\n\n注意事项：\n- 确保 variables 中的个人信息已正确填写\n- 部分操作需要手动完成（如选择年份）\n- 错误处理模式设置为「手动」，遇到错误会暂停",
   "variables": {
     "idNumber": "850522-44-2208",

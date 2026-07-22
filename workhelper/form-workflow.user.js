@@ -42,7 +42,7 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             font-size: 20px;
-            cursor: pointer;
+            cursor: grab;
             box-shadow: 0 6px 20px rgba(102, 126, 234, 0.45);
             z-index: 99998;
             transition: transform 0.2s, box-shadow 0.2s;
@@ -54,6 +54,9 @@
         #workflow-floating-btn:hover {
             transform: scale(1.1) translateY(-2px);
             box-shadow: 0 8px 28px rgba(102, 126, 234, 0.55);
+        }
+        #workflow-floating-btn.dragging {
+            cursor: grabbing;
         }
 
         /* ========== Panel Container ========== */
@@ -829,6 +832,10 @@
     let currentStepIndex = -1;
     let currentActionIndex = -1;
     let dragData = { isDragging: false, hasDragged: false, startX: 0, startY: 0, startRight: 20, startTop: 20 };
+
+    // 浮动按钮位置状态
+    let floatingBtnPosition = { right: 24, bottom: 24 };
+    let floatingBtnDragData = { isDragging: false, startX: 0, startY: 0, startRight: 0, startBottom: 0 };
     let logs = [];
     let autoContinue = false;
     let lastUrl = window.location.href;
@@ -863,6 +870,7 @@
     function setStopRequested(v) { stopRequested = v; }
     function setCurrentStepIndex(v) { currentStepIndex = v; }
     function setCurrentActionIndex(v) { currentActionIndex = v; }
+    function setFloatingBtnPosition(v) { floatingBtnPosition = v; }
     function setLogs(v) { logs = v; }
     function setAutoContinue(v) { autoContinue = v; }
     function setLastUrl(v) { lastUrl = v; }
@@ -1822,6 +1830,14 @@
             if (action.description) {
                 addLog(`· ${action.description}`, 'info');
             }
+        },
+
+        // 刷新页面
+        reload: async function(action) {
+            addLog(`✓ 刷新页面`, 'success');
+            saveState();
+            location.reload();
+            await new Promise(() => {});
         }
     };
 
@@ -2452,6 +2468,44 @@
             const groupTag = workflow.group ? ` <span style="font-size:10px;opacity:0.7;background:rgba(255,255,255,0.15);padding:1px 5px;border-radius:3px;">${escapeHtml(workflow.group)}</span>` : '';
             nameEl.innerHTML = `📋 ${escapeHtml(workflow.name)}${groupTag} <span id="workflow-config-version" style="font-size:10px;color:#a0aec0;">v${escapeHtml(workflow.version || '1.0.0')}</span>`;
         }
+    }
+
+    /**
+     * 根据当前页面 URL 快速匹配工作流。
+     *
+     * 每个工作流可配置 urlMatchers 字段（可选），格式：
+     *   urlMatchers: [
+     *     { match: ["keyword1", "keyword2"], exclude: ["keyword3"] }
+     *   ]
+     * 匹配逻辑：URL 包含所有 match 关键词，且不包含任何 exclude 关键词，则视为命中。
+     * 多条规则满足其一即命中。
+     * 按 workflowList 顺序取第一个命中的工作流，自动切换。
+     */
+    function autoMatchWorkflow() {
+        const url = window.location.href;
+        const matched = workflowList.find(wf => {
+            if (!wf.urlMatchers || !Array.isArray(wf.urlMatchers) || wf.urlMatchers.length === 0) {
+                return false;
+            }
+            return wf.urlMatchers.some(rule => {
+                const matchKeywords = Array.isArray(rule.match) ? rule.match : [];
+                const excludeKeywords = Array.isArray(rule.exclude) ? rule.exclude : [];
+                const allMatched = matchKeywords.every(kw => url.includes(kw));
+                const anyExcluded = excludeKeywords.some(kw => url.includes(kw));
+                return allMatched && !anyExcluded;
+            });
+        });
+
+        if (!matched) {
+            showToast('未找到匹配当前页面的工作流', 'warning');
+            return;
+        }
+        if (matched.id === activeWorkflowId) {
+            showToast(`当前已是匹配的工作流：${matched.name}`, 'info');
+            return;
+        }
+        switchWorkflow(matched.id);
+        showToast(`已自动匹配：${matched.name}`, 'success');
     }
 
     // updateUI 由外部注入
@@ -3366,16 +3420,48 @@
             clearState();
         }
 
-        // 浮动按钮
+        // 浮动按钮 - 先移除旧的，避免事件监听器累积
+        const oldBtn = document.getElementById('workflow-floating-btn');
+        if (oldBtn) oldBtn.remove();
+
         const floatingBtn = document.createElement('button');
         floatingBtn.id = 'workflow-floating-btn';
         floatingBtn.innerHTML = '📝';
         floatingBtn.title = '表单工作流';
-        floatingBtn.onclick = () => {
+        let hasDraggedFloatingBtn = false;
+
+        floatingBtn.onclick = (e) => {
+            if (hasDraggedFloatingBtn) {
+                hasDraggedFloatingBtn = false;
+                return;
+            }
             const panel = document.getElementById('workflow-panel');
             if (panel) panel.remove();
             else createUI();
         };
+
+        // 加载保存的浮动按钮位置
+        const savedBtnPos = GM_getValue('floating_btn_position');
+        if (savedBtnPos) {
+            setFloatingBtnPosition(savedBtnPos);
+        }
+
+        // 应用位置到浮动按钮
+        floatingBtn.style.right = floatingBtnPosition.right + 'px';
+        floatingBtn.style.bottom = floatingBtnPosition.bottom + 'px';
+
+        // 浮动按钮拖拽
+        floatingBtn.addEventListener('mousedown', (e) => {
+            hasDraggedFloatingBtn = false;
+            floatingBtnDragData.isDragging = true;
+            floatingBtnDragData.startX = e.clientX;
+            floatingBtnDragData.startY = e.clientY;
+            floatingBtnDragData.startRight = parseFloat(floatingBtn.style.right) || 0;
+            floatingBtnDragData.startBottom = parseFloat(floatingBtn.style.bottom) || 0;
+            floatingBtn.classList.add('dragging');
+            e.preventDefault();
+        });
+
         document.body.appendChild(floatingBtn);
 
         // 主面板
@@ -3443,7 +3529,10 @@
             <div class="wf-sidebar">
                 <div class="wf-sidebar-section">
                     <div class="wf-sidebar-title">工作流管理</div>
-                    <select id="workflow-select" class="wf-select"></select>
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <select id="workflow-select" class="wf-select" style="flex:1;min-width:0;"></select>
+                        <button id="wf-automatch-btn" class="wf-sm-btn" title="根据当前页面 URL 快速匹配工作流" style="flex-shrink:0;padding:4px 7px;font-size:13px;">⚡</button>
+                    </div>
                     <div class="wf-sm-btns">
                         <button id="wf-new-btn" class="wf-sm-btn">＋ 新建</button>
                         <button id="wf-delete-btn" class="wf-sm-btn">🗑 删除</button>
@@ -4030,6 +4119,7 @@
             if (await showConfirm(`确定要删除工作流「${workflow.name}」吗？`, { title: '删除工作流', type: 'danger', confirmText: '删除' })) deleteWorkflow(activeWorkflowId);
         };
         document.getElementById('wf-default-btn').onclick = () => { setDefaultWorkflow(activeWorkflowId); };
+        document.getElementById('wf-automatch-btn').onclick = () => { autoMatchWorkflow(); };
 
         // 缩放
         function startResize(e, corner) {
@@ -4083,6 +4173,31 @@
                 panel.style.top = newPanelTop + 'px';
                 panel.style.right = (window.innerWidth - newPanelLeft - newWidth) + 'px';
             }
+
+            // 浮动按钮拖拽
+            if (floatingBtnDragData.isDragging) {
+                const dx = e.clientX - floatingBtnDragData.startX;
+                const dy = e.clientY - floatingBtnDragData.startY;
+
+                // 检测是否有实际拖动（位移超过 3px）
+                if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                    hasDraggedFloatingBtn = true;
+                }
+
+                let newRight = floatingBtnDragData.startRight - dx;
+                let newBottom = floatingBtnDragData.startBottom - dy;
+
+                // 限制在窗口范围内
+                const maxRight = window.innerWidth - 52;
+                const maxBottom = window.innerHeight - 52;
+                if (newRight < 0) newRight = 0;
+                if (newRight > maxRight) newRight = maxRight;
+                if (newBottom < 0) newBottom = 0;
+                if (newBottom > maxBottom) newBottom = maxBottom;
+
+                floatingBtn.style.right = newRight + 'px';
+                floatingBtn.style.bottom = newBottom + 'px';
+            }
         });
 
         document.addEventListener('mouseup', () => {
@@ -4094,6 +4209,21 @@
                 });
             }
             if (dragData.isDragging) dragData.isDragging = false;
+
+            // 浮动按钮拖拽结束
+            if (floatingBtnDragData.isDragging) {
+                floatingBtnDragData.isDragging = false;
+                // 保存位置
+                const newPos = {
+                    right: parseFloat(floatingBtn.style.right),
+                    bottom: parseFloat(floatingBtn.style.bottom)
+                };
+                setFloatingBtnPosition(newPos);
+                GM_setValue('floating_btn_position', newPos);
+            }
+            // 无条件移除 dragging class，确保状态一致
+            const btn = document.getElementById('workflow-floating-btn');
+            if (btn) btn.classList.remove('dragging');
         });
 
         setupDrag(panel);
@@ -4295,7 +4425,7 @@
                         highlightHtml = `<button class="wf-action-sm-btn highlight-btn action-highlight-btn" data-step="${stepIndex}" data-action="${actionIndex}">💡</button>`;
                     }
 
-                    const actionTypeDisplay = actionType === 'condition' ? '🔀' : actionType === 'noop' ? '·' : actionType;
+                    const actionTypeDisplay = actionType === 'condition' ? '🔀' : actionType === 'noop' ? '·' : actionType === 'reload' ? '🔄' : actionType;
 
                     // 条件判断动作添加连接点
                     const isCondition = actionType === 'condition';

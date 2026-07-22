@@ -1,19 +1,31 @@
 {
   "name": "我的账号登录流程-整合版",
-  "version": "2",
+  "version": "3",
   "enabled": true,
   "group": "登录",
   "order": 0,
+  "urlMatchers": [
+    { "match": ["cas/login"], "exclude": [] }
+  ],
   "description": "账号自动登录工作流\n\n使用步骤：\n1. 打开信贷系统登录页面\n2. 点击「开始执行」按钮\n3. 脚本会自动填写账号密码并点击登录\n\n注意事项：\n- 确保 variables 中的账号密码已正确填写\n- 错误处理模式设置为「手动」，遇到错误会暂停",
   "variables": {
-    "username": "abc",
-    "pwd": "abc@123A"
+    "username": "v_yingchengwang",
+    "pwd": "v_yingchengwang@123A"
   },
   "execution": {
     "stepDelay": 50,
     "onError": "manual"
   },
   "steps": [
+    {
+      "name": "0. 刷新页面",
+      "actions": [
+        {
+          "type": "reload",
+          "description": "刷新当前页面"
+        }
+      ]
+    },
     {
       "name": "1. 登录",
       "actions": [
@@ -84,11 +96,6 @@
     {
       "name": "2. 强制登陆检测",
       "actions": [
-        {
-          "type": "wait",
-          "ms": 500,
-          "description": "等待页面跳转"
-        },
         {
           "type": "condition",
           "description": "强制登陆检测",
