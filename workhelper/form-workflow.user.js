@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.30
+// @version      3.0.31
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -3089,6 +3089,67 @@
         workflowLastCheck: 'workflow_updater_lastCheck',
     };
 
+    // 定时器引用
+    let updateTimer = null;
+    let workflowUpdateTimer = null;
+
+    /**
+     * 启动自动更新检查（在页面加载时调用一次）
+     */
+    function startAutoCheck() {
+        // 立即检查一次
+        performUpdateCheck();
+        performWorkflowUpdateCheck();
+    }
+
+    /**
+     * 执行脚本更新检查并调度下一次
+     */
+    async function performUpdateCheck() {
+        const result = await checkUpdateCore();
+        if (result && result.hasUpdate) {
+            window.wfHasUpdate = true;
+        }
+        // 调度下一次检查
+        scheduleNextUpdateCheck();
+    }
+
+    /**
+     * 执行工作流更新检查并调度下一次
+     */
+    async function performWorkflowUpdateCheck() {
+        const result = await checkWorkflowUpdateCore();
+        if (result && result.hasUpdate) {
+            window.wfWorkflowUpdate = true;
+        }
+        // 调度下一次检查
+        scheduleNextWorkflowUpdateCheck();
+    }
+
+    /**
+     * 调度下一次脚本更新检查
+     */
+    function scheduleNextUpdateCheck() {
+        if (updateTimer) clearTimeout(updateTimer);
+        updateTimer = setTimeout(() => {
+            console.log('[AutoCheck] 开始定时检查脚本更新...');
+            performUpdateCheck();
+        }, CONFIG.checkInterval);
+        console.log(`[AutoCheck] 下次脚本更新检查将在 ${CONFIG.checkInterval / 1000 / 60} 分钟后执行`);
+    }
+
+    /**
+     * 调度下一次工作流更新检查
+     */
+    function scheduleNextWorkflowUpdateCheck() {
+        if (workflowUpdateTimer) clearTimeout(workflowUpdateTimer);
+        workflowUpdateTimer = setTimeout(() => {
+            console.log('[AutoCheck] 开始定时检查工作流更新...');
+            performWorkflowUpdateCheck();
+        }, CONFIG.checkInterval);
+        console.log(`[AutoCheck] 下次工作流更新检查将在 ${CONFIG.checkInterval / 1000 / 60} 分钟后执行`);
+    }
+
     /**
      * 使用 GM_xmlhttpRequest 获取 JSON（绕过 CSP 限制）
      * 添加时间戳参数避免缓存
@@ -3153,7 +3214,7 @@
      * 自动检查是否有新版本可用（后台静默检查）
      * @returns {Promise<object>} 返回检查结果 { hasUpdate: boolean, latest: string, current: string, changelog: string, scriptUrl: string }
      */
-    async function checkUpdate() {
+    async function checkUpdateCore() {
         const lastCheck = GM_getValue(KEYS.lastCheck, 0);
         const now = Date.now();
         const currentVersion = getCurrentVersion();
@@ -3227,7 +3288,7 @@
      * 检查工作流是否有新版本
      * @returns {Promise<object>} 返回检查结果 { hasUpdate: boolean, workflows: array }
      */
-    async function checkWorkflowUpdate() {
+    async function checkWorkflowUpdateCore() {
         const lastCheck = GM_getValue(KEYS.workflowLastCheck, 0);
         const now = Date.now();
 
@@ -3377,6 +3438,10 @@
         if (lMinor !== cMinor) return lMinor > cMinor;
         return lPatch > cPatch;
     }
+
+    // 导出别名，保持向后兼容
+    const checkUpdate = checkUpdateCore;
+    const checkWorkflowUpdate = checkWorkflowUpdateCore;
 
     // ============================================
     // UI 创建
@@ -3816,7 +3881,7 @@
                                     <div style="flex-shrink:0;width:24px;height:24px;background:#ed8936;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-right:12px;">1</div>
                                     <div style="flex:1;font-size:14px;color:#2d3748;line-height:1.6;">
                                         在新标签页中点击
-                                        <span style="background:#fed7e2;color:#c53030;padding:2px 8px;border-radius:4px;font-weight:600;">「Override」</span>
+                                        <span style="background:#fed7e2;color:#c53030;padding:2px 8px;border-radius:4px;font-weight:600;">「Override/重新安装」</span>
                                         更新脚本
                                     </div>
                                 </div>
@@ -4914,38 +4979,8 @@
         }, 500);
     }
 
-    // 检查更新（异步，不阻塞主流程）
-    checkUpdate().then(result => {
-        if (result && result.hasUpdate) {
-            window.wfHasUpdate = true;
-        }
-    });
-
-    // 检查工作流更新（异步，不阻塞主流程）
-    checkWorkflowUpdate().then(result => {
-        if (result && result.hasUpdate) {
-            window.wfWorkflowUpdate = true;
-        }
-    });
-
-    // 定时检查更新（每30分钟）
-    const AUTO_CHECK_INTERVAL = 30 * 60 * 1000; // 30分钟
-    setInterval(() => {
-        console.log('[AutoCheck] 开始定时检查更新...');
-        checkUpdate().then(result => {
-            if (result && result.hasUpdate) {
-                window.wfHasUpdate = true;
-                console.log('[AutoCheck] 发现脚本更新');
-            }
-        });
-        checkWorkflowUpdate().then(result => {
-            if (result && result.hasUpdate) {
-                window.wfWorkflowUpdate = true;
-                console.log('[AutoCheck] 发现有工作流更新');
-            }
-        });
-    }, AUTO_CHECK_INTERVAL);
-    console.log(`[AutoCheck] 定时检查已启用，间隔: ${AUTO_CHECK_INTERVAL / 1000 / 60} 分钟`);
+    // 启动自动更新检查（内部会调度后续检查）
+    startAutoCheck();
 
     // 调试辅助函数：在控制台调用 wf.clearUpdateCheck() 来清除更新检查时间
     // 使用 unsafeWindow 将函数暴露到页面全局作用域，使其可在浏览器控制台中访问
