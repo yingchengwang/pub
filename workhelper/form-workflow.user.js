@@ -3633,6 +3633,9 @@
             <div style="margin-bottom:12px;">
                 <label for="value-edit-input" style="display:block;font-size:12px;color:#4a5568;margin-bottom:4px;">新值:</label>
                 <input type="text" id="value-edit-input" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;outline:none;transition:border-color 0.15s;" placeholder="输入新值，数组格式如: [&quot;a&quot;, &quot;b&quot;]">
+                <div id="value-edit-resolved" style="font-size:12px;color:#a0aec0;margin-top:6px;display:none;">
+                    实际值：<span id="value-edit-resolved-value" style="color:#4a5568;font-weight:500;"></span>
+                </div>
             </div>
             <div style="font-size:11px;color:#718096;margin-bottom:14px;line-height:1.4;">
                 💡 提示：select 类型支持数组格式，尝试多个值直到匹配，如 <code style="background:#f7fafc;padding:1px 4px;border-radius:3px;">[&quot;选项1&quot;, &quot;选项2&quot;]</code>
@@ -4631,9 +4634,27 @@
                     setCurrentValueEditAction({ stepIndex, actionIndex });
                     const modal = document.getElementById('value-edit-modal');
                     const input = document.getElementById('value-edit-input');
+                    const resolvedDiv = document.getElementById('value-edit-resolved');
+                    const resolvedValue = document.getElementById('value-edit-resolved-value');
                     const currentValue = getEffectiveActionValue(stepIndex, actionIndex);
                     // 数组值显示为 JSON 字符串
                     input.value = Array.isArray(currentValue) ? JSON.stringify(currentValue) : (currentValue || '');
+
+                    // 检查是否是变量引用，如果是则显示实际值
+                    const varMatch = typeof currentValue === 'string' && currentValue.match(/\$\{(\w+)\}/);
+                    if (varMatch) {
+                        const resolved = replaceVariables(currentValue, workflow.variables);
+                        // 只有解析出值且与原值不同时才显示（避免未定义变量的误导）
+                        if (resolved !== currentValue && resolved !== undefined) {
+                            resolvedValue.textContent = Array.isArray(resolved) ? JSON.stringify(resolved) : resolved;
+                            resolvedDiv.style.display = 'block';
+                        } else {
+                            resolvedDiv.style.display = 'none';
+                        }
+                    } else {
+                        resolvedDiv.style.display = 'none';
+                    }
+
                     modal.style.display = 'flex';
                     input.focus();
                     input.select();

@@ -12,10 +12,10 @@
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit1.json",
       "changelog": "- 从sit2同步过来； \n - 建议在变量管理中修改变量值；"
     },
-    "dev1信贷申请流程": {
+    "dev信贷申请流程": {
       "version": "31",
       "updatedAt": "2026-06-15",
-      "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_dev1.json",
+      "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_dev.json",
       "changelog": "- 初始版本"
     },
     "我的账号登录流程-整合版": {
