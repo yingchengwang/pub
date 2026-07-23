@@ -3856,92 +3856,55 @@
                             <div>最新版本：<strong>v${result.latest}</strong></div>
                         </div>
                     </div>
+
                     <div style="padding:12px;background:#ebf8ff;border-radius:8px;border:1px solid #90cdf4;margin-bottom:16px;">
                         <div style="font-size:13px;font-weight:600;color:#2c5282;margin-bottom:6px;">📝 更新内容：</div>
                         ${result.updatedAt ? `<div style="font-size:12px;color:#38a169;margin-bottom:6px;">更新于 ${result.updatedAt}</div>` : ''}
                         <div style="font-size:13px;color:#2a4365;white-space:pre-line;">${result.changelog || '详见更新日志'}</div>
                     </div>
+
                     <div style="display:flex;justify-content:center;gap:10px;">
                         <button id="goto-update-btn" style="padding:8px 20px;border:none;background:#48bb78;color:white;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">立即更新</button>
                     </div>
                 `;
-                    statusEl.querySelector('#goto-update-btn').onclick = () => {
-                        // 显示确认模态框
+
+                    // 定义"立即更新"按钮的点击处理函数
+                    const handleGotoUpdate = () => {
+                        // 显示确认对话框（含更新步骤，步骤1进行中）
                         statusEl.innerHTML = `
-                        <div style="padding:24px;background:#fffaf0;border-radius:12px;border:2px solid #f6ad55;">
-                            <div style="font-size:16px;font-weight:700;color:#9c4221;margin-bottom:6px;display:flex;align-items:center;gap:8px;">
-                                <span style="font-size:20px;">⚡</span>
-                                <span>确认更新脚本</span>
+                        <div style="padding:20px;background:#fffaf0;border-radius:12px;border:2px solid #f6ad55;">
+                            <div style="font-size:15px;font-weight:600;color:#9c4221;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                                <span style="font-size:18px;">⚡</span>
+                                <span>确认更新脚本？</span>
                             </div>
-                            <div style="font-size:13px;color:#9c4221;margin-bottom:20px;opacity:0.9;">
-                                即将打开脚本安装页面
+                            <div style="font-size:13px;color:#9c4221;margin-bottom:16px;line-height:1.6;">
+                                点击「确认」后将自动跳转到油猴管理界面
                             </div>
-                            <div style="background:#fff;border-radius:8px;padding:16px;margin-bottom:20px;border:1px dashed #f6ad55;">
-                                <div style="display:flex;align-items:flex-start;margin-bottom:14px;">
-                                    <div style="flex-shrink:0;width:24px;height:24px;background:#ed8936;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-right:12px;">1</div>
-                                    <div style="flex:1;font-size:14px;color:#2d3748;line-height:1.6;">
-                                        在新标签页中点击
-                                        <span style="background:#fed7e2;color:#c53030;padding:2px 8px;border-radius:4px;font-weight:600;">「Override/重新安装」</span>
-                                        更新脚本
-                                    </div>
-                                </div>
-                                <div style="display:flex;align-items:flex-start;">
-                                    <div style="flex-shrink:0;width:24px;height:24px;background:#ed8936;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-right:12px;">2</div>
-                                    <div style="flex:1;font-size:14px;color:#2d3748;line-height:1.6;">
-                                        更新完成后，请
-                                        <span style="background:#feebc8;color:#9c4221;padding:2px 8px;border-radius:4px;font-weight:700;text-shadow:0 1px 1px rgba(0,0,0,0.1);">刷新页面</span>
-                                    </div>
-                                </div>
-                            </div>
+                            ${renderUpdateSteps(1)}
                             <div style="display:flex;justify-content:center;gap:12px;">
-                                <button id="cancel-update-btn" style="padding:10px 24px;border:1px solid #cbd5e0;background:#fff;color:#4a5568;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.2s;">取消</button>
-                                <button id="confirm-update-btn" style="padding:10px 24px;border:none;background:#ed8936;color:white;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 4px rgba(237,137,54,0.3);">确认更新</button>
+                                <button id="cancel-update-btn" style="padding:8px 20px;border:1px solid #cbd5e0;background:#fff;color:#4a5568;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;transition:all 0.2s;">取消</button>
+                                <button id="confirm-update-btn" style="padding:8px 20px;border:none;background:#ed8936;color:white;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 4px rgba(237,137,54,0.3);">确认</button>
                             </div>
                         </div>
                     `;
-                        // 取消按钮：恢复原界面
+                        // 取消按钮：关闭模态框
                         statusEl.querySelector('#cancel-update-btn').onclick = () => {
-                            statusEl.innerHTML = `
-                            <div style="padding:16px;background:#f0fff4;border-radius:8px;border:1px solid #9ae6b4;margin-bottom:16px;">
-                                <div style="font-size:14px;font-weight:600;color:#22543d;margin-bottom:8px;">✓ 发现新版本！</div>
-                                <div style="font-size:13px;color:#2f855a;">
-                                    <div>当前版本：<strong>v${currentVersion}</strong></div>
-                                    <div>最新版本：<strong>v${result.latest}</strong></div>
-                                </div>
-                            </div>
-                            <div style="padding:12px;background:#ebf8ff;border-radius:8px;border:1px solid #90cdf4;margin-bottom:16px;">
-                                <div style="font-size:13px;font-weight:600;color:#2c5282;margin-bottom:6px;">📝 更新内容：</div>
-                                ${result.updatedAt ? `<div style="font-size:12px;color:#38a169;margin-bottom:6px;">更新于 ${result.updatedAt}</div>` : ''}
-                                <div style="font-size:13px;color:#2a4365;white-space:pre-line;">${result.changelog || '详见更新日志'}</div>
-                            </div>
-                            <div style="display:flex;justify-content:center;gap:10px;">
-                                <button id="goto-update-btn" style="padding:8px 20px;border:none;background:#48bb78;color:white;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">立即更新</button>
-                            </div>
-                        `;
-                            // 重新绑定点击事件
-                            statusEl.querySelector('#goto-update-btn').onclick = arguments.callee;
+                            document.getElementById('update-modal').style.display = 'none';
                         };
-                        // 确认按钮：执行更新
+                        // 确认按钮：执行更新并显示后续引导
                         statusEl.querySelector('#confirm-update-btn').onclick = () => {
                             // 隐藏更新提示点
                             const dot = document.getElementById('update-dot');
                             if (dot) dot.style.display = 'none';
                             // 打开油猴界面
                             GM_openInTab(result.scriptUrl, { active: true });
-                            // 在确认按钮后面添加刷新按钮
-                            const confirmBtn = statusEl.querySelector('#confirm-update-btn');
-                            if (confirmBtn && !statusEl.querySelector('#refresh-page-btn')) {
-                                const refreshBtn = document.createElement('button');
-                                refreshBtn.id = 'refresh-page-btn';
-                                refreshBtn.textContent = '刷新页面';
-                                refreshBtn.style.cssText = 'padding:10px 24px;border:none;background:#4299e1;color:white;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 4px rgba(66,153,225,0.3);';
-                                refreshBtn.onclick = () => {
-                                    location.reload();
-                                };
-                                confirmBtn.parentNode.insertBefore(refreshBtn, confirmBtn.nextSibling);
-                            }
+                            // 显示更新进度引导（步骤2进行中）
+                            showUpdateProgressGuide(statusEl);
                         };
                     };
+
+                    // 绑定"立即更新"按钮的点击事件
+                    statusEl.querySelector('#goto-update-btn').onclick = handleGotoUpdate;
                 } else {
                     // 已是最新版本，隐藏绿点
                     const dot = document.getElementById('update-dot');
@@ -3965,6 +3928,66 @@
                 </div>
             `;
             }
+        }
+
+        // 渲染更新步骤引导（统一样式）
+        // currentStep: 当前进行中的步骤序号 (1/2/3)，小于该序号为已完成，大于为未开始
+        function renderUpdateSteps(currentStep) {
+            const steps = [
+                { num: 1, text: '点击立即更新自动跳转到油猴管理界面' },
+                { num: 2, text: '在新标签页中，点击<span style="background:#fed7e2;color:#c53030;padding:2px 8px;border-radius:4px;font-weight:600;margin:0 4px;">「Override/重新安装」</span>按钮更新脚本' },
+                { num: 3, text: '回到此页面，点击「刷新页面」按钮' }
+            ];
+
+            const stepsHtml = steps.map(step => {
+                let bg, borderColor, iconBg, iconContent, textColor;
+                if (step.num < currentStep) {
+                    // 已完成
+                    bg = '#f0fff4'; borderColor = '#9ae6b4'; iconBg = '#48bb78';
+                    iconContent = '✓'; textColor = '#2f855a';
+                } else if (step.num === currentStep) {
+                    // 当前进行中
+                    bg = '#ebf8ff'; borderColor = '#90cdf4'; iconBg = '#4299e1';
+                    iconContent = step.num; textColor = '#2c5282';
+                } else {
+                    // 未开始
+                    bg = '#f7fafc'; borderColor = '#e2e8f0'; iconBg = '#cbd5e0';
+                    iconContent = step.num; textColor = '#a0aec0';
+                }
+                return `
+                <div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:${bg};border-radius:8px;border:1px solid ${borderColor};">
+                    <div style="flex-shrink:0;width:24px;height:24px;background:${iconBg};color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;">${iconContent}</div>
+                    <div style="flex:1;font-size:13px;color:${textColor};line-height:1.5;">${step.text}</div>
+                </div>
+            `;
+            }).join('');
+
+            return `
+            <div style="margin-bottom:16px;">
+                <div style="font-size:14px;font-weight:600;color:#2d3748;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:16px;">📋</span>
+                    <span>更新步骤</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    ${stepsHtml}
+                </div>
+            </div>
+        `;
+        }
+
+        // 显示更新进度引导
+        function showUpdateProgressGuide(container) {
+            container.innerHTML = `
+            <div style="padding:20px;">
+                ${renderUpdateSteps(2)}
+                <button id="refresh-page-btn" style="width:100%;padding:10px 24px;border:none;background:#4299e1;color:white;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 4px rgba(66,153,225,0.3);">
+                    🔄 刷新页面
+                </button>
+            </div>
+        `;
+            container.querySelector('#refresh-page-btn').onclick = () => {
+                location.reload();
+            };
         }
 
         // 加载云端工作流列表
