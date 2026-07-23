@@ -1,6 +1,6 @@
 {
   "name": "sit2信贷申请流程",
-  "version": "40",
+  "version": "41",
   "enabled": true,
   "group": "新建订单",
   "order": 2,
@@ -26,6 +26,7 @@
     "amountApplied": "44444",
     "addressLine1": "123",
     "addressLine2": "123",
+    "address1Type": "Work/Office Address",
     "workAddressLine1": "123",
     "workAddressLine2": "123",
     "homeOwnership": "Employer's",
@@ -316,7 +317,7 @@
           "selector": "#home-address + form div:has(label[title=\"Home Ownership\"]) +div input[type=\"search\"]",
           "value": "${homeOwnership}",
           "description": "选择 Home Ownership",
-          "waitAfterClick": 800
+          "waitAfterClick": 100
         }
       ]
     },
@@ -328,6 +329,14 @@
           "selector": "div:has(#home-address) + div label[for*=\"addressType\"]",
           "block": "center",
           "description": "滚动到 Work Address"
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_addressList_1_addressType",
+          "value": "${address1Type}",
+          "description": "选择Address Type",
+          "waitAfterClick": 100,
+          "bypass": true
         },
         {
           "type": "click",
@@ -992,7 +1001,7 @@
           "description": "合同面板关闭成功"
         }
       ],
-      "runtimeBypass": true
+      "bypass": true
     }
   ]
 }

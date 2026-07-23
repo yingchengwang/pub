@@ -1,10 +1,10 @@
 {
   "workflows": {
     "sit2信贷申请流程": {
-      "version": "40",
+      "version": "41",
       "updatedAt": "2026-07-21",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit2.json",
-      "changelog": "- 优化Dealer Code选太快选不上的问题; \n - 建议在变量管理中修改变量值；"
+      "changelog": "- 增加Address Type选择; \n - 增加默认bypass设置; \n - 建议在变量管理中修改变量值；"
     },
     "sit1信贷申请流程": {
       "version": "37",

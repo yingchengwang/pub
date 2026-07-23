@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.31
+// @version      3.0.32
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -2088,6 +2088,23 @@
             const step = workflow.steps[currentStepIndex];
             if (!step) break;
 
+            // 检查步骤是否被绕过
+            const stepBypassed = getEffectiveStepBypass(currentStepIndex);
+            if (stepBypassed) {
+                addLog(`⊘ 跳过绕过的步骤: ${step.name}`, 'info');
+                const isLastStep = currentStepIndex === workflow.steps.length - 1;
+                if (isLastStep) {
+                    setWorkflowCompleted(true);
+                    setAutoContinue(false);
+                    addLog(`🎉 工作流 "${workflow.name}" 已完成所有步骤！`, 'success');
+                    break;
+                } else {
+                    setCurrentStepIndex(currentStepIndex + 1);
+                    startActionIndex = 0;
+                    continue;
+                }
+            }
+
             const result = await runActionLoop(currentStepIndex, startActionIndex);
             if (result === 'paused') {
                 setIsRunning(false);
@@ -2413,17 +2430,9 @@
         addLog(`已删除工作流: ${name}`, 'info');
     }
 
-    function setDefaultWorkflow(id) {
-        GM_setValue('active_workflow_id', id);
-        updateWorkflowSelect();
-        const target = workflowList.find(w => w.id === id);
-        addLog(`已将「${target ? target.name : ''}」设为默认工作流`, 'success');
-    }
-
     function updateWorkflowSelect() {
         const select = document.getElementById('workflow-select');
         if (!select) return;
-        const defaultId = GM_getValue('active_workflow_id');
 
         const groups = {};
         workflowList.forEach(w => {
@@ -2444,8 +2453,7 @@
 
         const renderOption = (w) => {
             const selected = w.id === activeWorkflowId ? 'selected' : '';
-            const isDefault = w.id === defaultId;
-            return `<option value="${w.id}" ${selected}>${escapeHtml(w.name)}${isDefault ? ' ★' : ''}</option>`;
+            return `<option value="${w.id}" ${selected}>${escapeHtml(w.name)}</option>`;
         };
 
         if (hasMultipleGroups) {
@@ -2523,22 +2531,6 @@
         addLog(`已跳转到步骤 ${stepIndex + 1}: ${workflow.steps[stepIndex].name}`, 'info');
         updateUI$3();
         saveState();
-    }
-
-    function skipToNextStep() {
-        if (isRunning) {
-            addLog('工作流正在运行中，无法跳过', 'warning');
-            return;
-        }
-        if (currentStepIndex < workflow.steps.length - 1) {
-            setCurrentStepIndex(currentStepIndex + 1);
-            setCurrentActionIndex(-1);
-            addLog(`已跳过当前步骤，当前: 步骤 ${currentStepIndex + 1}`, 'info');
-            updateUI$3();
-            saveState();
-        } else {
-            addLog('已经是最后一步了', 'info');
-        }
     }
 
     async function executeSingleStep(stepIndex) {
@@ -2709,6 +2701,8 @@
                         workflowList[idx] = workflow;
                     }
                     saveWorkflowList();
+                    // 清空该工作流的运行时覆盖（开关状态、临时值修改等），以最新 JSON 配置为准
+                    clearWorkflowOverrides(activeWorkflowId);
                     addLog(`配置已更新 - 工作流: ${workflow.name}, 步骤数: ${workflow.steps?.length || 0}`, 'success');
                     updateUI$2();
                     updateWorkflowSelect();
@@ -3569,7 +3563,6 @@
                     </div>
                     <div class="wf-btn-row">
                         <button class="wf-btn wf-btn-reset" id="reset-btn">↺ 重置</button>
-                        <button class="wf-btn wf-btn-skip" id="skip-btn">⏭ 跳过</button>
                         <button class="wf-btn wf-btn-desc" id="desc-btn">📖 说明</button>
                     </div>
                 </div>
@@ -3598,13 +3591,12 @@
                         <select id="workflow-select" class="wf-select" style="flex:1;min-width:0;"></select>
                         <button id="wf-automatch-btn" class="wf-sm-btn" title="根据当前页面 URL 快速匹配工作流" style="flex-shrink:0;padding:4px 7px;font-size:13px;">⚡</button>
                     </div>
-                    <div class="wf-sm-btns">
-                        <button id="wf-new-btn" class="wf-sm-btn">＋ 新建</button>
-                        <button id="wf-delete-btn" class="wf-sm-btn">🗑 删除</button>
-                        <button id="wf-default-btn" class="wf-sm-btn">★ 默认</button>
+                    <div style="display:flex;gap:4px;margin-top:8px;">
+                        <button id="wf-new-btn" class="wf-sm-btn" style="flex:1;padding:6px 8px;font-size:11px;white-space:nowrap;">➕ 新建</button>
+                        <button id="wf-delete-btn" class="wf-sm-btn" style="flex:1;padding:6px 8px;font-size:11px;white-space:nowrap;">🗑 删除</button>
+                        <button class="wf-edit-config-btn" id="edit-config-btn" style="flex:1;padding:6px 8px;font-size:11px;white-space:nowrap;">✏️ 编辑配置</button>
                     </div>
                 </div>
-                <button class="wf-edit-config-btn" id="edit-config-btn">✏️ 编辑配置</button>
                 <div class="wf-log-section">
                     <div class="wf-log-header">
                         <span class="wf-sidebar-title">执行日志</span>
@@ -4177,7 +4169,6 @@
         document.getElementById('start-btn').onclick = () => { executeWorkflow(); };
         document.getElementById('stop-btn').onclick = () => { stopWorkflow(); };
         document.getElementById('reset-btn').onclick = async () => { if (await showConfirm('确定要重置工作流状态吗？', { title: '重置工作流', type: 'danger', confirmText: '重置' })) resetWorkflow(); };
-        document.getElementById('skip-btn').onclick = () => { skipToNextStep(); };
         document.getElementById('desc-btn').onclick = () => { showDescription(); };
         document.getElementById('update-check-btn').onclick = () => { showUpdateModal(); };
         document.getElementById('check-script-update-btn').onclick = () => { checkScriptUpdate(); };
@@ -4209,7 +4200,6 @@
         document.getElementById('wf-delete-btn').onclick = async () => {
             if (await showConfirm(`确定要删除工作流「${workflow.name}」吗？`, { title: '删除工作流', type: 'danger', confirmText: '删除' })) deleteWorkflow(activeWorkflowId);
         };
-        document.getElementById('wf-default-btn').onclick = () => { setDefaultWorkflow(activeWorkflowId); };
         document.getElementById('wf-automatch-btn').onclick = () => { autoMatchWorkflow(); };
 
         // 缩放
