@@ -1,6 +1,6 @@
 {
   "name": "sit2信贷申请流程",
-  "version": "41",
+  "version": "42",
   "enabled": true,
   "group": "新建订单",
   "order": 2,
@@ -742,6 +742,30 @@
           "description": "保存income计算器"
         },
         {
+          "type": "wait",
+          "ms": 1000,
+          "description": "等待"
+        },
+        {
+          "type": "condition",
+          "description": "是否有保存成功提示框",
+          "condition": {
+            "type": "elementVisible",
+            "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.ant-modal-confirm-btns>button"
+          },
+          "gotoTrue": "closeSaveSuccessModal",
+          "gotoFalse": "waitToClickIncome"
+        },
+
+        {
+          "id": "closeSaveSuccessModal",
+          "type": "click",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.ant-modal-confirm-btns>button",
+          "description": "点击OK关闭提示框"
+        },
+
+        {
+          "id": "waitToClickIncome",
           "type": "wait",
           "ms": 1000,
           "description": "等待"
