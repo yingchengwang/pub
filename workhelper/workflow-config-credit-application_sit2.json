@@ -1,6 +1,6 @@
 {
   "name": "sit2信贷申请流程",
-  "version": "42",
+  "version": "43",
   "enabled": true,
   "group": "新建订单",
   "order": 2,
@@ -40,7 +40,7 @@
     "vehicleStatus": "New",
     "makeCode": "AUDI",
     "familyCode": "A3 2.0(A)",
-    "modelReference": "1.4 TFSI SEDAN S-Tronic FWD Petrol 8V",
+    "modelReference": "##1",
     "manufactureYear": "2025",
     "dealerCode": "98140000101",
     "tenure": "12",
@@ -590,13 +590,6 @@
           "waitAfterClick": 800
         },
         {
-          "type": "select",
-          "selector": "#form_item_modelReference",
-          "value": "${modelReference}",
-          "description": "选择车辆FisMD",
-          "waitAfterClick": 800
-        },
-        {
           "type": "click",
           "selector": "#form_item_manufactureYear",
           "description": "点击年份选择",
@@ -607,6 +600,13 @@
           "selector": "table.ant-picker-content > tbody > tr >td[title=\"${manufactureYear}\"]",
           "description": "选择年份",
           "waitUserAction": false
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_modelReference",
+          "value": "${modelReference}",
+          "description": "选择车辆FisMD",
+          "waitAfterClick": 800
         }
       ]
     },

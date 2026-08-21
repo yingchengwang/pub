@@ -1,10 +1,10 @@
 {
   "workflows": {
     "sit2信贷申请流程": {
-      "version": "42",
+      "version": "43",
       "updatedAt": "2026-08-19",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit2.json",
-      "changelog": "- 优化对保存收入后出现的模态框的关闭处理; \n - 建议在变量管理中修改变量值；"
+      "changelog": "- 优化对保存收入后出现的模态框的关闭处理;\n - 优化fisModel选择逻辑 \n - 建议在变量管理中修改变量值；"
     },
     "sit1信贷申请流程": {
       "version": "37",

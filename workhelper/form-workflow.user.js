@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.32
+// @version      3.0.34
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -499,6 +499,7 @@
             border-radius: 4px;
             border-left: 2px solid #e2e8f0;
             transition: all 0.15s;
+            position: relative;
         }
 
         #workflow-panel .wf-step-item.completed .wf-action-item {
@@ -554,19 +555,30 @@
         }
 
         #workflow-panel .wf-action-type {
-            font-size: 9px;
+            display: inline-block;
+            font-size: 8px;
             font-weight: 600;
-            color: #718096;
+            color: #a0aec0;
+            background: #f7fafc;
+            padding: 1px 4px;
+            border-radius: 3px;
             text-transform: uppercase;
             letter-spacing: 0.3px;
+            border: 1px solid #e2e8f0;
+            line-height: 1.2;
+            margin-left: 6px;
+            vertical-align: middle;
         }
 
         #workflow-panel .wf-action-desc {
-            font-size: 11px;
-            color: #2d3748;
+            font-size: 12px;
+            font-weight: 500;
+            color: #1a202c;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
         }
 
         #workflow-panel .wf-action-meta {
@@ -862,6 +874,10 @@
     // 运行时覆盖
     let runtimeOverrides = {};
 
+    // 运行时变量：由 extract / setVariable 动作写入，重置工作流时清空
+    let runtimeVariables = {};
+    function setRuntimeVariables(v) { runtimeVariables = v; }
+
     // Setters
     function setWorkflow(v) { workflow = v; }
     function setWorkflowList(v) { workflowList = v; }
@@ -892,6 +908,8 @@
             isRunning: isRunning,
             autoContinue: autoContinue,
             workflowCompleted: workflowCompleted,
+            // 运行时变量随执行状态一起持久化，确保翻页后内容不丢失
+            runtimeVariables: runtimeVariables,
             timestamp: Date.now()
         };
         GM_setValue(STATE_STORAGE_KEY, stateData);
@@ -1247,7 +1265,9 @@
     }
 
     function evaluateCondition(cond) {
-        const value = cond.value !== undefined ? replaceVariables(cond.value, workflow.variables) : '';
+        const vars = Object.assign({}, workflow.variables, runtimeVariables);
+        const value = cond.value !== undefined ? replaceVariables(cond.value, vars) : '';
+        const selector = cond.selector ? replaceVariables(cond.selector, vars) : cond.selector;
 
         switch (cond.type) {
             case 'alwaysTrue':
@@ -1257,15 +1277,15 @@
                 return false;
 
             case 'elementExists':
-                return !!document.querySelector(cond.selector);
+                return !!document.querySelector(selector);
 
             case 'elementVisible': {
-                const el = document.querySelector(cond.selector);
+                const el = document.querySelector(selector);
                 return el && el.offsetParent !== null;
             }
 
             case 'elementText': {
-                const textEl = document.querySelector(cond.selector);
+                const textEl = document.querySelector(selector);
                 if (!textEl) return false;
                 const text = (textEl.textContent || '').trim();
                 console.log('text', text);
@@ -1281,7 +1301,7 @@
             }
 
             case 'elementAttribute': {
-                const attrEl = document.querySelector(cond.selector);
+                const attrEl = document.querySelector(selector);
                 if (!attrEl) return false;
                 const BOOL_PROPS = ['checked', 'disabled', 'readonly', 'selected', 'hidden', 'required'];
                 const attrName = cond.attribute || '';
@@ -1317,7 +1337,7 @@
             }
 
             case 'variableMatch': {
-                const varValue = workflow.variables[cond.name];
+                const varValue = vars[cond.name];
                 const varStr = varValue !== undefined && varValue !== null ? String(varValue) : '';
                 switch (cond.match) {
                     case 'eq': return compareValues(varStr, value, 'eq');
@@ -1407,6 +1427,28 @@
         return action.value;
     }
 
+    // 解析 ## 位置语法：##1 第1个、##last 最后一个、##random 随机一个（基于可见且未禁用的选项列表）
+    // 返回 null 表示不是位置语法，走普通文本匹配
+    const parsePositionSpec = (value) => {
+        if (typeof value !== 'string') return null;
+        const match = value.match(/^##(\d+|last|random)$/);
+        if (!match) return null;
+        if (match[1] === 'last') return { kind: 'last' };
+        if (match[1] === 'random') return { kind: 'random' };
+        const n = parseInt(match[1], 10);
+        return n >= 1 ? { kind: 'index', index: n } : null;
+    };
+
+    // 按位置语法从选项列表中取目标选项，越界/无选项返回 null
+    const pickByPosition = (options, spec) => {
+        if (!spec || options.length === 0) return null;
+        let idx;
+        if (spec.kind === 'last') idx = options.length - 1;
+        else if (spec.kind === 'random') idx = Math.floor(Math.random() * options.length);
+        else idx = spec.index - 1;
+        return (idx >= 0 && idx < options.length) ? options[idx] : null;
+    };
+
     const actionExecutors = {
         // 填写输入框
         fill: async function(action, variables) {
@@ -1447,13 +1489,26 @@
                 await sleep(waitAfterClick);
 
                 let foundValue = null;
-                const options = triggerElement.querySelectorAll('option');
+                let selectedOption = null;
+                const allOptions = Array.from(triggerElement.querySelectorAll('option'));
+                const enabledOptions = allOptions.filter(o => !o.disabled);
                 for (const value of values) {
-                    for (const option of options) {
-                        if (option.value === value || option.textContent.trim() === value) {
+                    const spec = parsePositionSpec(value);
+                    if (spec) {
+                        const option = pickByPosition(enabledOptions, spec);
+                        if (option) {
                             triggerElement.value = option.value;
                             foundValue = value;
-                            break;
+                            selectedOption = option;
+                        }
+                    } else {
+                        for (const option of enabledOptions) {
+                            if (option.value === value || option.textContent.trim() === value) {
+                                triggerElement.value = option.value;
+                                foundValue = value;
+                                selectedOption = option;
+                                break;
+                            }
                         }
                     }
                     if (foundValue) break;
@@ -1462,7 +1517,8 @@
                 if (foundValue) {
                     triggerElement.dispatchEvent(new Event('change', { bubbles: true }));
                     const allValues = values.length > 1 ? ` [尝试: ${values.join(', ')}]` : '';
-                    addLog(`✓ 选择选项: ${foundValue}${allValues}`, 'success');
+                    const posHint = parsePositionSpec(foundValue) ? ` → "${selectedOption.textContent.trim()}"` : '';
+                    addLog(`✓ 选择选项: ${foundValue}${posHint}${allValues}`, 'success');
                     return;
                 } else {
                     addLog(`✗ 未找到选项: ${values.join(', ')}`, 'error');
@@ -1519,8 +1575,8 @@
                 throw new Error('下拉框打开失败，无法选择选项');
             }
 
-            // 查找并点击选项（支持多个备选值）
-            const findOption = () => {
+            // 收集当前可见且未禁用的选项（按选择器优先级取第一组命中的）
+            const collectVisibleOptions = () => {
                 const optionSelectors = [
                     '[role="option"]',
                     '.ant-select-item-option',
@@ -1536,23 +1592,44 @@
                 for (const optSel of optionSelectors) {
                     const options = document.querySelectorAll(optSel);
                     if (options.length > 0) {
+                        const visible = [];
                         for (const option of options) {
                             const rect = option.getBoundingClientRect();
                             const isVisible = rect.width > 0 && rect.height > 0 &&
                                             option.style.display !== 'none' &&
                                             option.style.visibility !== 'hidden';
                             if (!isVisible) continue;
+                            const isDisabled = option.getAttribute('aria-disabled') === 'true' ||
+                                               option.classList.contains('ant-select-item-option-disabled') ||
+                                               option.classList.contains('disabled') ||
+                                               option.classList.contains('is-disabled');
+                            if (isDisabled) continue;
+                            visible.push(option);
+                        }
+                        if (visible.length > 0) return visible;
+                    }
+                }
+                return [];
+            };
 
+            // 查找并点击选项（支持多个备选值，## 位置语法或文本/data-value 匹配）
+            const findOption = () => {
+                const visibleOptions = collectVisibleOptions();
+                for (const value of values) {
+                    const spec = parsePositionSpec(value);
+                    if (spec) {
+                        const option = pickByPosition(visibleOptions, spec);
+                        if (option) {
+                            return { element: option, matchedValue: value };
+                        }
+                    } else {
+                        for (const option of visibleOptions) {
                             const optionText = option.textContent.trim();
                             const optionValue = option.getAttribute('data-value') ||
                                                option.getAttribute('value') ||
                                                option.getAttribute('title') || '';
-
-                            // 尝试匹配任何一个备选值
-                            for (const value of values) {
-                                if (optionText === value || optionValue === value) {
-                                    return { element: option, matchedValue: value };
-                                }
+                            if (optionText === value || optionValue === value) {
+                                return { element: option, matchedValue: value };
                             }
                         }
                     }
@@ -1575,7 +1652,8 @@
                 await simulateClick(targetResult.element);
                 await sleep(300);
                 const allValues = values.length > 1 ? ` [尝试: ${values.join(', ')}]` : '';
-                addLog(`✓ 选择选项: ${targetResult.matchedValue}${allValues}`, 'success');
+                const posHint = parsePositionSpec(targetResult.matchedValue) ? ` → "${targetResult.element.textContent.trim()}"` : '';
+                addLog(`✓ 选择选项: ${targetResult.matchedValue}${posHint}${allValues}`, 'success');
             } else {
                 addLog(`✗ 未找到选项: ${values.join(', ')}`, 'error');
                 clickableTarget.click();
@@ -1825,6 +1903,135 @@
             }
         },
 
+        // 从页面元素或 URL 提取值并写入运行时变量
+        extract: async function(action, variables) {
+            const targetVar = action.variable;
+            if (!targetVar) {
+                throw new Error('extract 动作缺少 variable 字段');
+            }
+
+            let rawValue;
+
+            if (action.attribute === 'url') {
+                // 提取整个当前 URL
+                rawValue = location.href;
+            } else if (typeof action.attribute === 'string' && action.attribute.startsWith('urlParam:')) {
+                // 提取 URL 查询参数，如 urlParam:id
+                const paramName = action.attribute.slice('urlParam:'.length);
+                rawValue = new URLSearchParams(location.search).get(paramName) ?? '';
+            } else {
+                // 从 DOM 元素提取
+                const selector = replaceVariables(action.selector, variables);
+                if (!selector) {
+                    throw new Error('extract 动作缺少 selector 字段（非 url/urlParam 来源时必填）');
+                }
+                const index = action.index || 0;
+                const element = await getElement(selector, action.timeout || 5000, index);
+                const attr = action.attribute || 'textContent';
+
+                if (attr === 'textContent') {
+                    rawValue = element.textContent ?? '';
+                } else if (attr === 'value') {
+                    rawValue = element.value ?? '';
+                } else if (attr === 'innerHTML') {
+                    rawValue = element.innerHTML ?? '';
+                } else {
+                    rawValue = element.getAttribute(attr) ?? '';
+                }
+            }
+
+            // 后处理 transform
+            let result = String(rawValue);
+            const transform = action.transform;
+            if (transform) {
+                if (transform === 'trim') {
+                    result = result.trim();
+                } else if (transform === 'trim-newlines') {
+                    result = result.replace(/[\r\n]+/g, ' ').trim();
+                } else if (typeof transform === 'string' && transform.startsWith('regex:')) {
+                // 格式 "regex:(.+)" — 取第一个捕获组，若无捕获组则取整体匹配
+                    const pattern = transform.slice('regex:'.length);
+                    const match = result.match(new RegExp(pattern));
+                    if (match) {
+                        result = match[1] !== undefined ? match[1] : match[0];
+                    } else {
+                        result = '';
+                    }
+                }
+            }
+
+            // 写入运行时变量（通过 variables 引用直接赋值，对象由 engine 传入）
+            variables[targetVar] = result;
+
+            const indexSuffix = (action.index > 0) ? ` [${action.index}]` : '';
+            const attrLabel = action.attribute || 'textContent';
+            addLog(`✓ 提取 ${action.selector || attrLabel}${indexSuffix} → ${targetVar} = "${result}"`, 'success');
+        },
+
+        // 设置或修改运行时变量
+        setVariable: async function(action, variables) {
+            const targetVar = action.variable;
+            if (!targetVar) {
+                throw new Error('setVariable 动作缺少 variable 字段');
+            }
+
+            const op = action.op || 'set';
+            const current = variables[targetVar];
+
+            let result;
+            switch (op) {
+                case 'set':
+                    result = replaceVariables(action.value !== undefined ? String(action.value) : '', variables);
+                    break;
+                case 'append': {
+                    const appendStr = replaceVariables(action.value !== undefined ? String(action.value) : '', variables);
+                    result = (current !== undefined && current !== null ? String(current) : '') + appendStr;
+                    break;
+                }
+                case 'increment': {
+                    const n = parseFloat(current);
+                    result = isNaN(n) ? 1 : n + (parseFloat(action.step) || 1);
+                    break;
+                }
+                case 'decrement': {
+                    const n = parseFloat(current);
+                    result = isNaN(n) ? -1 : n - (parseFloat(action.step) || 1);
+                    break;
+                }
+                case 'clear':
+                    result = '';
+                    break;
+                default:
+                    throw new Error(`setVariable: 未知 op "${op}"`);
+            }
+
+            variables[targetVar] = result;
+            const preview = String(result);
+            addLog(`✓ 变量 ${targetVar} [${op}] → "${preview.slice(0, 60)}${preview.length > 60 ? '…' : ''}"`, 'success');
+        },
+
+        // 将变量内容触发文件下载
+        download: async function(action, variables) {
+            const filename = replaceVariables(action.filename || 'download.txt', variables);
+            const content = replaceVariables(action.content !== undefined ? String(action.content) : '', variables);
+            const mimeType = action.mimeType || 'text/plain;charset=utf-8';
+
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 1000);
+
+            addLog(`✓ 下载文件: ${filename}（${(content.length / 1024).toFixed(1)} KB）`, 'success');
+        },
+
         // 空操作（占位符/跳转目标）
         noop: async function(action) {
             if (action.description) {
@@ -1841,6 +2048,10 @@
         }
     };
 
+    // 合并静态变量与运行时变量，运行时变量优先级更高
+    function getMergedVariables() {
+        return Object.assign({}, workflow.variables, runtimeVariables);
+    }
     // updateUI 由外部注入，避免循环依赖
     let _updateUI$4 = null;
     function setUpdateUIRef$4(fn) { _updateUI$4 = fn; }
@@ -1894,7 +2105,11 @@
             const actionOnError = action.onError || stepOnError;
 
             try {
-                await executeAction(action, workflow.variables, workflow);
+                // 每次执行前重新合并，确保上一个 extract 写入的值对后续动作可见
+                const mergedVars = getMergedVariables();
+                await executeAction(action, mergedVars, workflow);
+                // extract 动作会直接写入 mergedVars，将新变量同步回 runtimeVariables
+                setRuntimeVariables(Object.assign({}, runtimeVariables, mergedVars));
                 await sleep(workflow.execution.stepDelay);
                 saveState();
             } catch (e) {
@@ -2046,8 +2261,10 @@
         }
         setWaitingForUserAction(false);
         setPendingAction(null);
+        setRuntimeVariables({});
         addLog(`自动继续模式已关闭`, 'info');
         updateUI$5();
+        saveState();
     }
 
     function tryHighlightErrorAction(action) {
@@ -2160,6 +2377,7 @@
         setCurrentActionIndex(-1);
         setAutoContinue(false);
         setWorkflowCompleted(false);
+        setRuntimeVariables({});
         clearState();
         setLogs([]);
         addLog(`工作流已重置`, 'info');
@@ -2748,6 +2966,8 @@
     function setUpdateUIRef(fn) { _updateUI = fn; }
     function updateUI$1() { if (_updateUI) _updateUI(); }
 
+    const ACTION_TYPE_LABELS = { fill: '填写', select: '下拉选择', click: '点击', check: '勾选', radio: '单选', waitFor: '等待元素', wait: '等待', scroll: '滚动到元素', focus: '聚焦', scrollTo: '滚动页面', scrollBy: '相对滚动', hover: '悬停', highlight: '高亮', custom: '自定义脚本', urlReplace: 'URL替换', condition: '条件判断', noop: '空操作', extract: '提取变量', setVariable: '设置变量', download: '下载文件' };
+
     const S = {
         input: 'width:100%;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;outline:none;transition:border-color 0.15s;',
         label: 'display:block;font-size:12px;color:#4a5568;margin-bottom:4px;font-weight:500;',
@@ -2759,7 +2979,7 @@
         tabActive: 'color:#667eea;border-bottom-color:#667eea;font-weight:600;',
     };
 
-    function openVisualEditor() {
+    function openVisualEditor(initialTab = 'info') {
         const existing = document.getElementById('visual-editor-modal');
         if (existing) { existing.remove(); return; }
 
@@ -2769,7 +2989,7 @@
         if (!wc.variables) wc.variables = {};
         if (!wc.enabled) wc.enabled = true;
 
-        let activeTab = 'info';
+        let activeTab = initialTab;
 
         const TABS = [
             { id: 'info', label: '📋 基本信息' },
@@ -2857,8 +3077,103 @@
             container.querySelector('#ve-description').oninput = (e) => { wc.description = e.target.value; };
         }
 
+        // 统计每个变量在工作流中被引用的位置（按 action 去重）
+        // 覆盖三种引用方式：${var} 插值、setVariable/extract 的 variable 字段、variableMatch 条件的变量名
+        let varRefs = new Map();
+
+        function collectVarRefs() {
+            const refs = new Map();
+            const addAction = (varName, stepName, action) => {
+                if (!refs.has(varName)) refs.set(varName, []);
+                const list = refs.get(varName);
+                if (!list.some(r => r.action === action)) list.push({ stepName, action });
+            };
+            (wc.steps || []).forEach(step => {
+                (step.actions || []).forEach(action => {
+                    // ${var} 插值：递归扫描动作的所有字符串字段（含嵌套的 condition 对象）
+                    const scan = (obj) => {
+                        Object.values(obj || {}).forEach(v => {
+                            if (typeof v === 'string') {
+                                const re = /\$\{(\w+)\}/g;
+                                let m;
+                                while ((m = re.exec(v))) addAction(m[1], step.name, action);
+                            } else if (v && typeof v === 'object') {
+                                scan(v);
+                            }
+                        });
+                    };
+                    scan(action);
+                    // setVariable / extract 直接读写变量名字段
+                    if ((action.type === 'setVariable' || action.type === 'extract') && action.variable) {
+                        addAction(action.variable, step.name, action);
+                    }
+                    // 条件判断 variableMatch 按变量名匹配
+                    if (action.condition && action.condition.type === 'variableMatch' && action.condition.name) {
+                        addAction(action.condition.name, step.name, action);
+                    }
+                });
+            });
+            return refs;
+        }
+
+        // 变量引用徽章：展示该变量被引用的 action 数量
+        function varRefBadgeHtml(key) {
+            const n = (varRefs.get(key) || []).length;
+            const base = 'padding:3px 10px;border-radius:10px;font-size:11px;flex-shrink:0;white-space:nowrap;';
+            const attr = `data-var-key="${key.replace(/"/g, '&quot;')}"`;
+            if (!n) return `<span class="ve-var-ref-badge" ${attr} style="${base}background:#f7fafc;color:#a0aec0;border:1px solid #e2e8f0;">未引用</span>`;
+            return `<span class="ve-var-ref-badge" ${attr} style="${base}background:#ebf8ff;color:#2b6cb0;border:1px solid #bee3f8;cursor:help;">🔗 ${n} 处引用</span>`;
+        }
+
+        function removeVarRefTooltip() {
+            const t = document.getElementById('ve-var-ref-tooltip');
+            if (t) t.remove();
+        }
+
+        // 悬停徽章时展示引用该变量的 action 的 description
+        function bindVarRefTooltips(container) {
+            container.querySelectorAll('.ve-var-ref-badge').forEach(badge => {
+                badge.onmouseenter = () => {
+                    const key = badge.dataset.varKey;
+                    const list = varRefs.get(key) || [];
+                    removeVarRefTooltip();
+                    if (!list.length) return;
+
+                    const items = list.map((r, i) => {
+                        const label = r.action.description
+                            ? escapeHtml(r.action.description)
+                            : `${escapeHtml(ACTION_TYPE_LABELS[r.action.type] || r.action.type || '未知')}（无描述）`;
+                        return `<div style="display:flex;gap:6px;align-items:baseline;padding:3px 0;font-size:12px;line-height:1.5;">
+                        <span style="color:#a0aec0;flex-shrink:0;">${i + 1}.</span>
+                        <span><span style="color:#63b3ed;">[${escapeHtml(r.stepName || '')}]</span> ${label}</span>
+                    </div>`;
+                    }).join('');
+
+                    const tooltip = document.createElement('div');
+                    tooltip.id = 've-var-ref-tooltip';
+                    tooltip.style.cssText = 'position:fixed;z-index:100001;max-width:400px;padding:10px 12px;background:#2d3748;color:#e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.3);font-family:inherit;pointer-events:none;';
+                    tooltip.innerHTML = `
+                    <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:white;">🔗 <code style="font-family:monospace;">${escapeHtml(key)}</code> 被 ${list.length} 个动作引用：</div>
+                    ${items}`;
+                    document.body.appendChild(tooltip);
+
+                    const rect = badge.getBoundingClientRect();
+                    let top = rect.bottom + 6;
+                    if (top + tooltip.offsetHeight > window.innerHeight - 8) {
+                        top = rect.top - tooltip.offsetHeight - 6;
+                    }
+                    const left = Math.max(8, Math.min(rect.left, window.innerWidth - tooltip.offsetWidth - 8));
+                    tooltip.style.top = `${Math.max(8, top)}px`;
+                    tooltip.style.left = `${left}px`;
+                };
+                badge.onmouseleave = removeVarRefTooltip;
+            });
+        }
+
         // 变量管理 - 修复
         function renderVariablesPanel(container) {
+            removeVarRefTooltip();
+            varRefs = collectVarRefs();
             const vars = wc.variables || {};
             const varEntries = Object.entries(vars);
 
@@ -2874,6 +3189,7 @@
                     <div class="ve-var-row" style="${S.card}display:flex;gap:12px;align-items:center;">
                         <div style="flex:1;"><input type="text" value="${k.replace(/"/g, '&quot;')}" data-idx="${i}" data-role="key" data-old-key="${k}" style="${S.input}" placeholder="变量名"></div>
                         <div style="flex:1;"><input type="text" value="${String(v).replace(/"/g, '&quot;')}" data-idx="${i}" data-role="value" style="${S.input}" placeholder="变量值"></div>
+                        ${varRefBadgeHtml(k)}
                         <button data-idx="${i}" class="ve-var-del" style="padding:6px 10px;border:none;background:#fff5f5;color:#e53e3e;border-radius:6px;cursor:pointer;font-size:12px;">删除</button>
                     </div>
                 `).join('')}
@@ -2895,11 +3211,13 @@
                 row.innerHTML = `
                 <div style="flex:1;"><input type="text" value="${newKey}" data-idx="${idx}" data-role="key" data-old-key="${newKey}" style="${S.input}" placeholder="变量名"></div>
                 <div style="flex:1;"><input type="text" data-idx="${idx}" data-role="value" style="${S.input}" placeholder="变量值"></div>
+                ${varRefBadgeHtml(newKey)}
                 <button data-idx="${idx}" class="ve-var-del" style="padding:6px 10px;border:none;background:#fff5f5;color:#e53e3e;border-radius:6px;cursor:pointer;font-size:12px;">删除</button>`;
                 list.appendChild(row);
 
                 // 重新绑定所有事件
                 bindVarEvents(container);
+                bindVarRefTooltips(container);
 
                 // 聚焦到变量名输入框
                 const keyInput = row.querySelector('[data-role="key"]');
@@ -2907,6 +3225,7 @@
                 keyInput.select();
             };
             bindVarEvents(container);
+            bindVarRefTooltips(container);
         }
 
         function bindVarEvents(container) {
@@ -3018,9 +3337,10 @@
         renderContent();
 
         // 按钮事件
-        document.getElementById('ve-close-btn').onclick = () => modal.remove();
-        document.getElementById('ve-cancel-btn').onclick = () => modal.remove();
-        document.getElementById('ve-advanced-btn').onclick = () => { modal.remove(); openConfigEditor(); };
+        function closeModal() { removeVarRefTooltip(); modal.remove(); }
+        document.getElementById('ve-close-btn').onclick = closeModal;
+        document.getElementById('ve-cancel-btn').onclick = closeModal;
+        document.getElementById('ve-advanced-btn').onclick = () => { closeModal(); openConfigEditor(); };
 
         document.getElementById('ve-json-toggle').onclick = () => {
             const content = document.getElementById('ve-content');
@@ -3050,8 +3370,8 @@
             showToast(`配置已保存，步骤数: ${wc.steps.length}`, 'success');
         };
 
-        modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') modal.remove(); });
-        modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+        modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+        modal.onclick = (e) => { if (e.target === modal) closeModal(); };
 
         return;
     }
@@ -3465,6 +3785,10 @@
             if (savedState.workflowCompleted) {
                 setWorkflowCompleted(true);
             }
+            // 恢复运行时变量（跨页导航后内容不丢失）
+            if (savedState.runtimeVariables && typeof savedState.runtimeVariables === 'object') {
+                setRuntimeVariables(savedState.runtimeVariables);
+            }
             const stepsLength = workflow?.steps?.length || 0;
             const hasUnfinishedSteps = savedState.currentStepIndex < stepsLength;
             const wasRunning = savedState.isRunning || savedState.autoContinue;
@@ -3565,6 +3889,9 @@
                         <button class="wf-btn wf-btn-reset" id="reset-btn">↺ 重置</button>
                         <button class="wf-btn wf-btn-desc" id="desc-btn">📖 说明</button>
                     </div>
+                    <div class="wf-btn-row">
+                        <button class="wf-btn wf-btn-vars" id="vars-btn" style="width:100%;">🔧 变量替换</button>
+                    </div>
                 </div>
 
                 <div class="wf-user-action" id="user-action-waiting" style="display:none;">
@@ -3630,7 +3957,7 @@
                 </div>
             </div>
             <div style="font-size:11px;color:#718096;margin-bottom:14px;line-height:1.4;">
-                💡 提示：select 类型支持数组格式，尝试多个值直到匹配，如 <code style="background:#f7fafc;padding:1px 4px;border-radius:3px;">[&quot;选项1&quot;, &quot;选项2&quot;]</code>
+                💡 提示：select 类型支持数组格式，尝试多个值直到匹配，如 <code style="background:#f7fafc;padding:1px 4px;border-radius:3px;">[&quot;选项1&quot;, &quot;选项2&quot;]</code>；也支持按位置选择：<code style="background:#f7fafc;padding:1px 4px;border-radius:3px;">##1</code> 第1项、<code style="background:#f7fafc;padding:1px 4px;border-radius:3px;">##last</code> 最后一项、<code style="background:#f7fafc;padding:1px 4px;border-radius:3px;">##random</code> 随机
             </div>
             <div style="display:flex;justify-content:flex-end;gap:8px;">
                 <button id="value-edit-cancel" style="padding:6px 14px;border:1px solid #e2e8f0;background:white;border-radius:6px;font-size:12px;cursor:pointer;color:#4a5568;">取消</button>
@@ -4170,6 +4497,7 @@
         document.getElementById('stop-btn').onclick = () => { stopWorkflow(); };
         document.getElementById('reset-btn').onclick = async () => { if (await showConfirm('确定要重置工作流状态吗？', { title: '重置工作流', type: 'danger', confirmText: '重置' })) resetWorkflow(); };
         document.getElementById('desc-btn').onclick = () => { showDescription(); };
+        document.getElementById('vars-btn').onclick = () => { openVisualEditor('variables'); };
         document.getElementById('update-check-btn').onclick = () => { showUpdateModal(); };
         document.getElementById('check-script-update-btn').onclick = () => { checkScriptUpdate(); };
         document.getElementById('refresh-workflow-list-btn').onclick = () => { loadRemoteWorkflows(); };
@@ -4523,8 +4851,10 @@
                     <div class="${actionItemClass}" data-step="${stepIndex}" data-action="${actionIndex}" style="${isCondition ? 'position:relative;' : ''}">
                         <button class="wf-action-exec-btn action-exec-btn" data-step="${stepIndex}" data-action="${actionIndex}" title="执行">▶</button>
                         <div class="wf-action-content">
-                            <div class="wf-action-type">${actionTypeDisplay}</div>
-                            <div class="wf-action-desc">${escapeHtml(actionDesc)}</div>
+                            <div class="wf-action-desc">
+                                <span>${escapeHtml(actionDesc)}</span>
+                                <span class="wf-action-type">${actionTypeDisplay}</span>
+                            </div>
                             ${actionMeta ? `<div class="wf-action-meta">${actionMeta}</div>` : ''}
                         </div>
                         ${highlightHtml}${valueEditHtml}${waitToggleHtml}${bypassToggleHtml}
