@@ -1,5 +1,5 @@
 {
-    "version": "3.0.34",
-    "updatedAt": "2026-08-21",
-    "changelog": "- select 动作支持按位置选择选项：##1 第1项、##last 最后一项、##random 随机一项，可与数组备选值混用；"
+    "version": "3.0.37",
+    "updatedAt": "2026-09-03",
+    "changelog": "- 支持文件上传； \n - bug修复"
 }

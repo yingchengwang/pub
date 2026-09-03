@@ -1,10 +1,10 @@
 {
   "workflows": {
     "sit2信贷申请流程": {
-      "version": "43",
-      "updatedAt": "2026-08-19",
+      "version": "44",
+      "updatedAt": "2026-09-03",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit2.json",
-      "changelog": "- 优化对保存收入后出现的模态框的关闭处理;\n - 优化fisModel选择逻辑 \n - 建议在变量管理中修改变量值；"
+      "changelog": "- 支持一键进件提交;\n - 支持文件上传，默认关闭合同、文件上传及提交三个步骤 \n - 建议在变量管理中修改变量值；"
     },
     "sit1信贷申请流程": {
       "version": "37",
@@ -19,10 +19,10 @@
       "changelog": "- 初始版本"
     },
     "我的账号登录流程-整合版": {
-      "version": "3",
-      "updatedAt": "2026-07-22",
+      "version": "4",
+      "updatedAt": "2026-08-25",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-login.json",
-      "changelog": "- 新增刷新页面步骤\n- 请注意替换自己的账号密码；\n - 建议在变量管理中修改变量值；"
+      "changelog": "- 支持登录后自动切换工作流\n- 请注意替换自己的账号密码；\n - 建议在变量管理中修改变量值；"
     }
   }
 }

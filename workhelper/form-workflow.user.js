@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.34
+// @version      3.0.37
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -25,6 +25,103 @@
     function injectStyles() {
         // Inject custom theme styles
         GM_addStyle(`
+        /* ========== Design Tokens (语义化配色变量) ==========
+           挂在 :root 使模态框（挂在 body 下、不在 #workflow-panel 内）也能引用。
+           变量名统一 --wf-* 前缀，避免污染宿主页面。
+           修改主色/状态色只需调整此处，全局生效；为暗色模式铺路。 */
+        :root {
+            /* 品牌 */
+            --wf-brand: #667eea;
+            --wf-brand-2: #764ba2;
+            --wf-brand-gradient: linear-gradient(135deg, var(--wf-brand) 0%, var(--wf-brand-2) 100%);
+            --wf-brand-shadow: rgba(102, 126, 234, 0.45);
+            --wf-brand-shadow-hover: rgba(102, 126, 234, 0.55);
+
+            /* 主色 / 当前态 / info（蓝）—— 唯一功能性主色 */
+            --wf-primary: #4299e1;
+            --wf-primary-dark: #3182ce;
+            --wf-primary-darker: #2b6cb0;
+            --wf-primary-text: #2a4365;
+            --wf-primary-light: #ebf8ff;
+            --wf-primary-border: #90cdf4;
+            --wf-primary-border-light: #bee3f8;
+            --wf-primary-focus: rgba(66, 153, 225, 0.15);
+
+            /* 成功 / 完成态 / 启用开关（绿） */
+            --wf-success: #2f855a;
+            --wf-success-hover: #276749;
+            --wf-success-accent: #48bb78;
+            --wf-success-light: #f0fff4;
+            --wf-success-border: #9ae6b4;
+            --wf-success-text: #22543d;
+
+            /* 错误 / 停止（红） */
+            --wf-error: #c53030;
+            --wf-error-hover: #9b2c2c;
+            --wf-error-accent: #fc8181;
+            --wf-error-light: #fff5f5;
+            --wf-error-soft: #ffe5e5;
+            --wf-error-soft-hover: #ffc8c8;
+            --wf-error-text: #742a2a;
+
+            /* 手动 / 警告（橙） */
+            --wf-warning: #c05621;
+            --wf-warning-hover: #9c4221;
+            --wf-warning-accent: #dd6b20;
+            --wf-warning-light: #fffaf0;
+            --wf-warning-border: #fbd38d;
+            --wf-warning-text: #744210;
+
+            /* 跳过（黄） */
+            --wf-skip-text: #975a16;
+            --wf-skip-light: #fff9db;
+            --wf-skip-light-hover: #ffec99;
+
+            /* 说明按钮（紫） */
+            --wf-desc-text: #553c9a;
+            --wf-desc-light: #f3e8ff;
+            --wf-desc-light-hover: #e0d4ff;
+
+            /* 表面 */
+            --wf-surface: #ffffff;
+            --wf-surface-muted: #f7fafc;
+            --wf-surface-2: #fafbfc;
+            --wf-surface-3: #f8f9fc;
+
+            /* 边框 */
+            --wf-border: #e2e8f0;
+            --wf-border-muted: #edf2f7;
+            --wf-border-strong: #cbd5e0;
+
+            /* 文字 */
+            --wf-text: #1a202c;
+            --wf-text-heading: #2d3748;
+            --wf-text-secondary: #4a5568;
+            --wf-text-muted: #718096;
+            --wf-text-faint: #a0aec0;
+
+            /* 日志区（暗色片段） */
+            --wf-log-bg: #1a202c;
+            --wf-log-text: #e2e8f0;
+            --wf-log-muted: #a0aec0;
+            --wf-log-border: #4a5568;
+            --wf-log-success: #68d391;
+            --wf-log-error: #fc8181;
+            --wf-log-info: #90cdf4;
+            --wf-log-warning: #fbd38d;
+
+            /* 遮罩 */
+            --wf-overlay: rgba(0, 0, 0, 0.4);
+
+            /* 圆角刻度（统一收敛到 sm/md/lg/xl + pill/circle） */
+            --wf-radius-sm: 4px;       /* 徽章/小标签/小按钮 */
+            --wf-radius-md: 6px;       /* 按钮/输入框/步骤项 */
+            --wf-radius-lg: 8px;       /* 卡片/信息条/分区 */
+            --wf-radius-xl: 12px;      /* 面板/模态框 */
+            --wf-radius-pill: 999px;   /* 开关/状态药丸 */
+            --wf-radius-circle: 50%;   /* 圆形图标/连接点 */
+        }
+
         /* ========== Scoped box-sizing ========== */
         #workflow-panel *, #workflow-panel *::before, #workflow-panel *::after {
             box-sizing: border-box;
@@ -38,12 +135,12 @@
             width: 52px;
             height: 52px;
             border: none;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius:var(--wf-radius-circle);
+            background: var(--wf-brand-gradient);
             color: white;
             font-size: 20px;
             cursor: grab;
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.45);
+            box-shadow: 0 6px 20px var(--wf-brand-shadow);
             z-index: 99998;
             transition: transform 0.2s, box-shadow 0.2s;
             display: flex;
@@ -53,7 +150,7 @@
 
         #workflow-floating-btn:hover {
             transform: scale(1.1) translateY(-2px);
-            box-shadow: 0 8px 28px rgba(102, 126, 234, 0.55);
+            box-shadow: 0 8px 28px var(--wf-brand-shadow-hover);
         }
         #workflow-floating-btn.dragging {
             cursor: grabbing;
@@ -69,12 +166,12 @@
             z-index: 99999;
             display: flex;
             flex-direction: column;
-            border-radius: 12px;
+            border-radius:var(--wf-radius-xl);
             overflow: hidden;
             box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             font-size: 13px;
-            background: #fff;
+            background: var(--wf-surface);
         }
 
         #workflow-panel.minimized {
@@ -93,7 +190,7 @@
 
         /* ========== Panel Header ========== */
         #workflow-panel .wf-panel-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--wf-brand-gradient);
             padding: 10px 16px;
             display: flex;
             justify-content: space-between;
@@ -116,7 +213,7 @@
             font-size: 10px;
             background: rgba(255,255,255,0.2);
             padding: 1px 6px;
-            border-radius: 8px;
+            border-radius:var(--wf-radius-lg);
             color: rgba(255,255,255,0.9);
         }
 
@@ -129,7 +226,7 @@
             width: 24px;
             height: 24px;
             border: none;
-            border-radius: 6px;
+            border-radius:var(--wf-radius-md);
             background: rgba(255,255,255,0.15);
             color: white;
             cursor: pointer;
@@ -169,24 +266,24 @@
             justify-content: space-between;
             align-items: center;
             padding: 8px 12px;
-            background: #f8f9fc;
-            border-radius: 8px;
-            border: 1px solid #eef0f6;
+            background: var(--wf-surface-3);
+            border-radius:var(--wf-radius-lg);
+            border: 1px solid var(--wf-border-muted);
         }
 
         #workflow-panel .wf-info-bar .wf-name {
             font-weight: 600;
             font-size: 13px;
-            color: #2d3748;
+            color: var(--wf-text-heading);
         }
 
         #workflow-panel .wf-info-bar .wf-status {
             font-size: 11px;
-            color: #718096;
+            color: var(--wf-text-muted);
             padding: 2px 8px;
             background: white;
-            border-radius: 10px;
-            border: 1px solid #e2e8f0;
+            border-radius:var(--wf-radius-pill);
+            border: 1px solid var(--wf-border);
         }
 
         /* Progress */
@@ -199,21 +296,21 @@
         #workflow-panel .wf-progress-bar {
             flex: 1;
             height: 5px;
-            background: #e2e8f0;
-            border-radius: 3px;
+            background: var(--wf-border);
+            border-radius:var(--wf-radius-sm);
             overflow: hidden;
         }
 
         #workflow-panel .wf-progress-fill {
             height: 100%;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-            border-radius: 3px;
+            background: var(--wf-brand-gradient);
+            border-radius:var(--wf-radius-sm);
             transition: width 0.3s ease;
         }
 
         #workflow-panel .wf-progress-text {
             font-size: 11px;
-            color: #718096;
+            color: var(--wf-text-muted);
             white-space: nowrap;
             min-width: 60px;
             text-align: right;
@@ -240,7 +337,7 @@
         #workflow-panel .wf-action-btns .wf-btn {
             padding: 5px 12px;
             border: none;
-            border-radius: 6px;
+            border-radius:var(--wf-radius-md);
             font-size: 12px;
             font-weight: 500;
             cursor: pointer;
@@ -255,63 +352,63 @@
         }
 
         #workflow-panel .wf-btn-start {
-            background: #2f855a;
+            background: var(--wf-success);
             color: white;
             font-weight: 600;
         }
-        #workflow-panel .wf-btn-start:hover { background: #276749; }
+        #workflow-panel .wf-btn-start:hover { background: var(--wf-success-hover); }
 
         #workflow-panel .wf-btn-stop {
-            background: #fc8181;
+            background: var(--wf-error);
             color: white;
         }
-        #workflow-panel .wf-btn-stop:hover { background: #f56565; }
+        #workflow-panel .wf-btn-stop:hover { background: var(--wf-error-hover); }
 
         #workflow-panel .wf-btn-reset {
-            background: #ffe5e5;
-            color: #c53030;
+            background: var(--wf-error-soft);
+            color: var(--wf-error);
         }
-        #workflow-panel .wf-btn-reset:hover { background: #ffc8c8; }
+        #workflow-panel .wf-btn-reset:hover { background: var(--wf-error-soft-hover); }
 
         #workflow-panel .wf-btn-skip {
-            background: #fff9db;
-            color: #975a16;
+            background: var(--wf-skip-light);
+            color: var(--wf-skip-text);
         }
-        #workflow-panel .wf-btn-skip:hover { background: #ffec99; }
+        #workflow-panel .wf-btn-skip:hover { background: var(--wf-skip-light-hover); }
 
         #workflow-panel .wf-btn-desc {
-            background: #f3e8ff;
-            color: #553c9a;
+            background: var(--wf-desc-light);
+            color: var(--wf-desc-text);
         }
-        #workflow-panel .wf-btn-desc:hover { background: #e0d4ff; }
+        #workflow-panel .wf-btn-desc:hover { background: var(--wf-desc-light-hover); }
 
         /* User action waiting */
         #workflow-panel .wf-user-action {
             padding: 10px 14px;
-            background: #fffbeb;
-            border: 1px solid #fbbf24;
-            border-radius: 8px;
+            background: var(--wf-warning-light);
+            border: 1px solid var(--wf-warning-border);
+            border-radius:var(--wf-radius-lg);
             text-align: center;
         }
 
         #workflow-panel .wf-user-action .wf-user-msg {
             font-size: 13px;
-            color: #d97706;
+            color: var(--wf-warning);
             font-weight: 500;
             margin-bottom: 8px;
         }
 
         #workflow-panel .wf-user-action .wf-btn-continue {
-            background: #48bb78;
+            background: var(--wf-success);
             color: white;
             border: none;
             padding: 5px 16px;
-            border-radius: 6px;
+            border-radius:var(--wf-radius-md);
             font-size: 12px;
             font-weight: 500;
             cursor: pointer;
         }
-        #workflow-panel .wf-user-action .wf-btn-continue:hover { background: #38a169; }
+        #workflow-panel .wf-user-action .wf-btn-continue:hover { background: var(--wf-success-hover); }
 
         /* ========== Step List ========== */
         #workflow-panel .wf-step-list-header {
@@ -319,18 +416,18 @@
             justify-content: space-between;
             align-items: center;
             padding: 6px 10px;
-            background: #f7fafc;
-            border-radius: 6px;
+            background: var(--wf-surface-muted);
+            border-radius:var(--wf-radius-md);
             cursor: pointer;
             user-select: none;
             font-size: 12px;
-            color: #4a5568;
+            color: var(--wf-text-secondary);
             font-weight: 600;
             transition: background 0.15s;
         }
 
         #workflow-panel .wf-step-list-header:hover {
-            background: #edf2f7;
+            background: var(--wf-border-muted);
         }
 
         #workflow-panel .wf-step-list-header .toggle-arrow {
@@ -369,41 +466,41 @@
             width: 4px;
         }
         #workflow-panel .wf-step-list::-webkit-scrollbar-thumb {
-            background: #cbd5e0;
-            border-radius: 2px;
+            background: var(--wf-border-strong);
+            border-radius:var(--wf-radius-sm);
         }
 
         /* Step item */
         #workflow-panel .wf-step-item {
             margin-bottom: 4px;
             margin-right: 10px;
-            border-radius: 6px;
-            background: #f7fafc;
-            border: 1px solid #e2e8f0;
+            border-radius:var(--wf-radius-md);
+            background: var(--wf-surface-muted);
+            border: 1px solid var(--wf-border);
             overflow: hidden;
             transition: all 0.15s;
         }
 
         #workflow-panel .wf-step-item.current {
-            background: #ebf8ff;
-            border-color: #90cdf4;
-            border-left: 3px solid #4299e1;
+            background: var(--wf-primary-light);
+            border-color: var(--wf-primary-border);
+            border-left: 3px solid var(--wf-primary);
         }
 
         #workflow-panel .wf-step-item.completed {
-            background: #f0fff4;
-            border-color: #9ae6b4;
-            border-left: 3px solid #48bb78;
+            background: var(--wf-success-light);
+            border-color: var(--wf-success-border);
+            border-left: 3px solid var(--wf-success-accent);
         }
 
         #workflow-panel .wf-step-item.bypassed {
             opacity: 0.5;
-            background: #f7fafc;
+            background: var(--wf-surface-muted);
         }
 
         #workflow-panel .wf-step-item.bypassed .wf-step-name {
             text-decoration: line-through;
-            color: #a0aec0;
+            color: var(--wf-text-faint);
         }
 
         #workflow-panel .wf-step-header {
@@ -422,26 +519,26 @@
         #workflow-panel .wf-step-icon {
             width: 18px;
             height: 18px;
-            border-radius: 50%;
+            border-radius:var(--wf-radius-circle);
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 9px;
-            background: #cbd5e0;
+            background: var(--wf-border-strong);
             color: white;
             flex-shrink: 0;
         }
 
         #workflow-panel .wf-step-item.current .wf-step-icon {
-            background: #4299e1;
+            background: var(--wf-primary);
         }
         #workflow-panel .wf-step-item.completed .wf-step-icon {
-            background: #48bb78;
+            background: var(--wf-success-accent);
         }
 
         #workflow-panel .wf-step-toggle {
             font-size: 9px;
-            color: #a0aec0;
+            color: var(--wf-text-muted);
             transition: transform 0.2s;
         }
 
@@ -453,7 +550,7 @@
             flex: 1;
             font-size: 12px;
             font-weight: 500;
-            color: #2d3748;
+            color: var(--wf-text-heading);
         }
 
         #workflow-panel .wf-step-controls {
@@ -465,17 +562,17 @@
         #workflow-panel .wf-step-ctrl-btn {
             padding: 2px 6px;
             font-size: 10px;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--wf-border);
             background: white;
-            border-radius: 4px;
+            border-radius:var(--wf-radius-sm);
             cursor: pointer;
-            color: #4a5568;
+            color: var(--wf-text-secondary);
             transition: all 0.15s;
         }
 
         #workflow-panel .wf-step-ctrl-btn:hover {
-            background: #edf2f7;
-            border-color: #cbd5e0;
+            background: var(--wf-border-muted);
+            border-color: var(--wf-border-strong);
         }
 
         /* Actions list */
@@ -496,28 +593,28 @@
             gap: 5px;
             padding: 4px 8px;
             background: white;
-            border-radius: 4px;
-            border-left: 2px solid #e2e8f0;
+            border-radius:var(--wf-radius-sm);
+            border-left: 2px solid var(--wf-border);
             transition: all 0.15s;
             position: relative;
         }
 
         #workflow-panel .wf-step-item.completed .wf-action-item {
-            border-left-color: #9ae6b4;
+            border-left-color: var(--wf-success-border);
         }
         #workflow-panel .wf-step-item.current .wf-action-item {
-            border-left-color: #90cdf4;
+            border-left-color: var(--wf-primary-border);
         }
 
         #workflow-panel .wf-action-item.current-action {
-            background: #ebf8ff;
-            border-left-color: #4299e1;
+            background: var(--wf-primary-light);
+            border-left-color: var(--wf-primary);
             border-left-width: 3px;
         }
 
         #workflow-panel .wf-action-item.error-action {
-            background: #fff5f5;
-            border-left-color: #fc8181;
+            background: var(--wf-error-light);
+            border-left-color: var(--wf-error-accent);
             border-left-width: 3px;
         }
 
@@ -530,10 +627,10 @@
             height: 18px;
             padding: 0;
             font-size: 9px;
-            background: #f7fafc;
-            color: #48bb78;
-            border: 1px solid #e2e8f0;
-            border-radius: 4px;
+            background: var(--wf-surface-muted);
+            color: var(--wf-success-accent);
+            border: 1px solid var(--wf-border);
+            border-radius:var(--wf-radius-sm);
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -542,8 +639,8 @@
             transition: all 0.15s;
         }
         #workflow-panel .wf-action-exec-btn:hover {
-            background: #f0fff4;
-            border-color: #9ae6b4;
+            background: var(--wf-success-light);
+            border-color: var(--wf-success-border);
         }
 
         #workflow-panel .wf-action-content {
@@ -556,15 +653,15 @@
 
         #workflow-panel .wf-action-type {
             display: inline-block;
-            font-size: 8px;
+            font-size: 10px;
             font-weight: 600;
-            color: #a0aec0;
-            background: #f7fafc;
+            color: var(--wf-text-muted);
+            background: var(--wf-surface-muted);
             padding: 1px 4px;
-            border-radius: 3px;
+            border-radius:var(--wf-radius-sm);
             text-transform: uppercase;
             letter-spacing: 0.3px;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--wf-border);
             line-height: 1.2;
             margin-left: 6px;
             vertical-align: middle;
@@ -573,7 +670,7 @@
         #workflow-panel .wf-action-desc {
             font-size: 12px;
             font-weight: 500;
-            color: #1a202c;
+            color: var(--wf-text);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -583,7 +680,7 @@
 
         #workflow-panel .wf-action-meta {
             font-size: 9px;
-            color: #a0aec0;
+            color: var(--wf-text-muted);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -593,92 +690,133 @@
         #workflow-panel .wf-action-sm-btn {
             padding: 1px 5px;
             font-size: 9px;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--wf-border);
             background: white;
-            border-radius: 3px;
+            border-radius:var(--wf-radius-sm);
             cursor: pointer;
-            color: #4a5568;
+            color: var(--wf-text-secondary);
             white-space: nowrap;
             transition: all 0.15s;
             flex-shrink: 0;
         }
         #workflow-panel .wf-action-sm-btn:hover {
-            background: #f7fafc;
-            border-color: #cbd5e0;
+            background: var(--wf-surface-muted);
+            border-color: var(--wf-border-strong);
         }
         #workflow-panel .wf-action-sm-btn.edit-btn {
-            color: #dd6b20;
-            border-color: #fbd38d;
+            color: var(--wf-warning-accent);
+            border-color: var(--wf-warning-border);
         }
         #workflow-panel .wf-action-sm-btn.edit-btn:hover {
-            background: #fffaf0;
+            background: var(--wf-warning-light);
         }
         #workflow-panel .wf-action-sm-btn.highlight-btn {
-            color: #3182ce;
-            border-color: #90cdf4;
+            color: var(--wf-primary-dark);
+            border-color: var(--wf-primary-border);
         }
         #workflow-panel .wf-action-sm-btn.highlight-btn:hover {
-            background: #ebf8ff;
+            background: var(--wf-primary-light);
         }
 
         /* Unified toggle switch - 统一的开关样式 */
+        /* ========== Toggle 开关 ========== */
         #workflow-panel .wf-toggle {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-width: 54px;
-            height: 20px;
-            padding: 0 8px;
-            background: #f0f0f0;
-            border-radius: 10px;
             cursor: pointer;
             transition: all 0.2s;
             flex-shrink: 0;
             user-select: none;
-            border: 1px solid #e2e8f0;
+            font-size: 14px;
+            position: relative;
         }
-        #workflow-panel .wf-toggle:hover {
-            background: #e8e8e8;
+
+        /* 滑块开关（启用/禁用） */
+        #workflow-panel .wf-toggle-enable {
+            width: 32px;
+            height: 18px;
+            background: var(--wf-surface-muted);
+            border: 1px solid var(--wf-border);
+            border-radius: var(--wf-radius-pill);
+            padding: 0;
+            box-sizing: border-box;
+            position: relative;
         }
-        #workflow-panel .wf-toggle .toggle-text {
-            font-size: 11px;
-            color: #718096;
-            font-weight: 500;
-            white-space: nowrap;
+
+        /* 滑块内的圆形指示器 */
+        #workflow-panel .wf-toggle-enable::after {
+            content: '';
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: white;
+            border-radius: 50%;
+            top: 50%;
+            left: 2px;
+            transform: translateY(-50%);
+            transition: left 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
-        /* Enable toggle - active 为绿色 */
-        #workflow-panel .wf-toggle.toggle-enable.active {
-            background: #48bb78;
-            border-color: #38a169;
+
+        /* 启用时，滑块右移 + 背景绿色 */
+        #workflow-panel .wf-toggle-enable.active {
+            background: var(--wf-success);
+            border-color: var(--wf-success-hover);
         }
-        #workflow-panel .wf-toggle.toggle-enable.active .toggle-text {
-            color: white;
+
+        #workflow-panel .wf-toggle-enable.active::after {
+            left: 18px;
         }
-        #workflow-panel .wf-toggle.toggle-enable.active:hover {
-            background: #43a047;
+
+        #workflow-panel .wf-toggle-enable:hover {
+            border-color: var(--wf-border-strong);
         }
-        /* Manual toggle - active 为橙色 */
-        #workflow-panel .wf-toggle.toggle-manual.active {
-            background: #f6ad55;
-            border-color: #ed8936;
+
+        /* 手动开关（手图标） */
+        #workflow-panel .wf-toggle-manual {
+            width: 24px;
+            height: 24px;
+            color: var(--wf-text-muted);
+            opacity: 0.5;
         }
-        #workflow-panel .wf-toggle.toggle-manual.active .toggle-text {
-            color: white;
+
+        /* 手动激活时，图标亮起 + 橙色 */
+        #workflow-panel .wf-toggle-manual.active {
+            color: var(--wf-warning);
+            opacity: 1;
         }
-        #workflow-panel .wf-toggle.toggle-manual.active:hover {
-            background: #f59e42;
+
+        #workflow-panel .wf-toggle-manual:hover {
+            opacity: 0.8;
         }
+
+        /* 缓存开关（卡片索引盒图标，仅上传动作）—— 点亮=缓存已启用；关闭时暗淡，参考手动开关样式 */
+        #workflow-panel .wf-toggle-cache {
+            width: 24px;
+            height: 24px;
+            color: var(--wf-text-muted);
+            opacity: 0.5;
+        }
+        #workflow-panel .wf-toggle-cache.active {
+            color: var(--wf-primary);
+            opacity: 1;
+        }
+        #workflow-panel .wf-toggle-cache:hover {
+            opacity: 0.8;
+        }
+
 
         /* ========== Sidebar ========== */
         #workflow-panel .wf-sidebar {
             width: 240px;
             min-width: 200px;
-            border-left: 1px solid #edf2f7;
+            border-left: 1px solid var(--wf-border-muted);
             display: flex;
             flex-direction: column;
             padding: 12px;
             gap: 10px;
-            background: #fafbfc;
+            background: var(--wf-surface-2);
             overflow: hidden;
         }
 
@@ -691,7 +829,7 @@
         #workflow-panel .wf-sidebar-title {
             font-size: 11px;
             font-weight: 600;
-            color: #4a5568;
+            color: var(--wf-text-secondary);
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
@@ -699,17 +837,17 @@
         #workflow-panel .wf-sidebar .wf-select {
             width: 100%;
             padding: 5px 8px;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
+            border: 1px solid var(--wf-border);
+            border-radius:var(--wf-radius-md);
             font-size: 12px;
             background: white;
-            color: #2d3748;
+            color: var(--wf-text-heading);
             cursor: pointer;
         }
         #workflow-panel .wf-sidebar .wf-select:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+            border-color: var(--wf-primary);
+            box-shadow: 0 0 0 2px var(--wf-primary-focus);
         }
 
         #workflow-panel .wf-sidebar .wf-sm-btns {
@@ -721,34 +859,34 @@
         #workflow-panel .wf-sidebar .wf-sm-btn {
             padding: 4px 8px;
             font-size: 11px;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--wf-border);
             background: white;
-            border-radius: 5px;
+            border-radius:var(--wf-radius-md);
             cursor: pointer;
-            color: #4a5568;
+            color: var(--wf-text-secondary);
             transition: all 0.15s;
         }
         #workflow-panel .wf-sidebar .wf-sm-btn:hover {
-            background: #edf2f7;
-            border-color: #cbd5e0;
+            background: var(--wf-border-muted);
+            border-color: var(--wf-border-strong);
         }
 
         #workflow-panel .wf-sidebar .wf-edit-config-btn {
             width: 100%;
             padding: 6px 10px;
-            border: 1px dashed #cbd5e0;
+            border: 1px dashed var(--wf-border-strong);
             background: white;
-            border-radius: 6px;
+            border-radius:var(--wf-radius-md);
             cursor: pointer;
-            color: #667eea;
+            color: var(--wf-primary);
             font-size: 12px;
             font-weight: 500;
             transition: all 0.15s;
             text-align: center;
         }
         #workflow-panel .wf-sidebar .wf-edit-config-btn:hover {
-            background: #f7f8ff;
-            border-color: #667eea;
+            background: var(--wf-primary-light);
+            border-color: var(--wf-primary);
         }
 
         /* Log area */
@@ -769,10 +907,10 @@
 
         #workflow-panel .wf-log-area {
             flex: 1;
-            background: #1a202c;
-            color: #e2e8f0;
+            background: var(--wf-log-bg);
+            color: var(--wf-log-text);
             padding: 8px 10px;
-            border-radius: 6px;
+            border-radius:var(--wf-radius-md);
             overflow-y: auto;
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             font-size: 10px;
@@ -783,8 +921,8 @@
             width: 4px;
         }
         #workflow-panel .wf-log-area::-webkit-scrollbar-thumb {
-            background: #4a5568;
-            border-radius: 2px;
+            background: var(--wf-log-border);
+            border-radius:var(--wf-radius-sm);
         }
 
         #workflow-panel .log-item {
@@ -792,10 +930,10 @@
             border-bottom: 1px solid rgba(255,255,255,0.05);
         }
         #workflow-panel .log-item:last-child { border-bottom: none; }
-        #workflow-panel .log-item.success { color: #68d391; }
-        #workflow-panel .log-item.error { color: #fc8181; }
-        #workflow-panel .log-item.info { color: #90cdf4; }
-        #workflow-panel .log-item.warning { color: #fbd38d; }
+        #workflow-panel .log-item.success { color: var(--wf-log-success); }
+        #workflow-panel .log-item.error { color: var(--wf-log-error); }
+        #workflow-panel .log-item.info { color: var(--wf-log-info); }
+        #workflow-panel .log-item.warning { color: var(--wf-log-warning); }
 
         /* ========== Resize Handles ========== */
         #workflow-panel .resize-handle {
@@ -817,7 +955,7 @@
 
         .workflow-highlight-element {
             animation: highlightPulse 1s ease-in-out infinite;
-            outline: 2px solid #4299e1 !important;
+            outline: 2px solid var(--wf-primary) !important;
         }
 
         /* ========== Modal Overrides ========== */
@@ -828,6 +966,21 @@
 
         .wf-modal .wf-modal-dialog {
             animation: wfModalFadeIn 0.2s ease-out;
+        }
+
+        /* ========== 键盘焦点环（可达性）==========
+           仅键盘 Tab 聚焦时显示焦点环，鼠标点击不显示（避免视觉噪音）。
+           ID 作用域优先级高于 .wf-select:focus 的 outline:none，
+           故 select 键盘聚焦时焦点环仍会显示（叠加其 box-shadow 聚焦环）。
+           输入框的内联 outline:none 已移除，使本规则生效。 */
+        #workflow-panel :focus-visible,
+        #workflow-floating-btn:focus-visible,
+        .wf-modal :focus-visible,
+        #config-editor-modal :focus-visible,
+        #visual-editor-modal :focus-visible,
+        #wf-confirm-overlay :focus-visible {
+            outline: 2px solid var(--wf-primary);
+            outline-offset: 2px;
         }
     `);
     }
@@ -855,6 +1008,7 @@
     let waitingForUserAction = false;
     let pendingAction = null;
     let currentValueEditAction = null;
+    let currentSelectorEditAction = null;
     let autoContinueTimer = null;
     let resizeData = {
         isResizing: false,
@@ -878,6 +1032,11 @@
     let runtimeVariables = {};
     function setRuntimeVariables(v) { runtimeVariables = v; }
 
+    // 自动匹配待执行标记：工作流执行完毕后需要自动匹配，跳转到新页面时使用
+    // 跨页面持久化，保存到 GM 存储
+    let autoMatchPending = false;
+    function setAutoMatchPending(v) { autoMatchPending = v; }
+
     // Setters
     function setWorkflow(v) { workflow = v; }
     function setWorkflowList(v) { workflowList = v; }
@@ -894,6 +1053,7 @@
     function setWaitingForUserAction(v) { waitingForUserAction = v; }
     function setPendingAction(v) { pendingAction = v; }
     function setCurrentValueEditAction(v) { currentValueEditAction = v; }
+    function setCurrentSelectorEditAction(v) { currentSelectorEditAction = v; }
     function setAutoContinueTimer(v) { autoContinueTimer = v; }
     function setGotoTarget(v) { gotoTarget = v; }
     function setGotoJustJumped(v) { gotoJustJumped = v; }
@@ -910,6 +1070,8 @@
             workflowCompleted: workflowCompleted,
             // 运行时变量随执行状态一起持久化，确保翻页后内容不丢失
             runtimeVariables: runtimeVariables,
+            // 自动匹配待执行标记：工作流完成后跳转到新页面时使用
+            autoMatchPending: autoMatchPending,
             timestamp: Date.now()
         };
         GM_setValue(STATE_STORAGE_KEY, stateData);
@@ -1010,6 +1172,22 @@
         return action.value;
     }
 
+    // 获取生效选择器（运行时覆盖优先，供执行器与 UI 共用）
+    function getEffectiveActionSelector(stepIndex, actionIndex) {
+        const override = getActionOverride(activeWorkflowId, stepIndex, actionIndex, 'selector');
+        if (override !== undefined) return override;
+        const action = workflow.steps[stepIndex].actions[actionIndex];
+        return action.selector;
+    }
+
+    // 获取上传动作的有效缓存开关（运行时覆盖优先；默认启用，cache 显式为 false 时禁用）
+    function getEffectiveActionCache(stepIndex, actionIndex) {
+        const override = getActionOverride(activeWorkflowId, stepIndex, actionIndex, 'cache');
+        if (override !== undefined) return override;
+        const action = workflow.steps[stepIndex].actions[actionIndex];
+        return action.cache !== false;
+    }
+
     // 默认工作流配置 - 根据你的需求修改
     const DEFAULT_WORKFLOW = {
         name: "测试工作流",
@@ -1031,8 +1209,10 @@
 
         // 执行配置
         execution: {
-            stepDelay: 300,              // 动作间延迟
-            onError: "continue"          // 错误处理: "continue" (继续执行)、"stop" (停止执行) 或 "manual" (等待用户手动处理)
+            stepDelay: 300,                  // 动作间延迟
+            onError: "continue",             // 错误处理: "continue" (继续执行)、"stop" (停止执行) 或 "manual" (等待用户手动处理)
+            autoMatchOnComplete: false,      // 整个工作流执行完毕后，是否根据当前页面 URL 快速匹配并切换到匹配的工作流（等同点击面板⚡图标）
+            autoMatchDelay: 800              // 自动匹配前的延迟时间（毫秒），用于等待页面跳转完成。默认 800ms，适用于登录后跳转等场景
         },
 
         // 步骤序列
@@ -1071,7 +1251,7 @@
 
         logArea.innerHTML = logs.map(log => `
         <div class="log-item ${log.type}">
-            <span style="color: #888;">[${log.timestamp}]</span> ${log.message}
+            <span style="color: var(--wf-log-muted);">[${log.timestamp}]</span> ${log.message}
         </div>
     `).join('');
 
@@ -1172,6 +1352,25 @@
     function getElementByXPath(xpath) {
         const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
         return result.singleNodeValue;
+    }
+
+    // 统计选择器匹配到的元素数量（支持 CSS 选择器与 XPath），用于高亮排查等场景
+    function countElements(selector) {
+        if (!selector) return 0;
+        const isXPath = selector.startsWith('/') || selector.startsWith('(');
+        if (isXPath) {
+            try {
+                const result = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                return result.snapshotLength;
+            } catch (e) {
+                return 0;
+            }
+        }
+        try {
+            return document.querySelectorAll(selector).length;
+        } catch (e) {
+            return 0;
+        }
     }
 
     function waitForElement(selector, timeout = 5000) {
@@ -1308,18 +1507,20 @@
                 const attrValue = BOOL_PROPS.includes(attrName.toLowerCase())
                     ? String(!!attrEl[attrName])
                     : attrEl.getAttribute(attrName);
+                // attrValue 恒为字符串，统一将比较值 stringify，兼容 JSON 中写 true/false/数字
+                const cmpValue = String(value);
 
                 switch (cond.match) {
-                    case 'eq': return attrValue === value;
+                    case 'eq': return attrValue === cmpValue;
                     case 'contains':
                         if (!attrValue) return false;
                         if (attrName.toLowerCase() === 'class') {
-                            return attrEl.classList.contains(value);
+                            return attrEl.classList.contains(cmpValue);
                         }
-                        return attrValue.includes(value);
+                        return attrValue.includes(cmpValue);
                     case 'notEmpty': return attrValue !== null && attrValue !== '';
                     case 'empty': return attrValue === null || attrValue === '';
-                    case 'regex': return attrValue ? new RegExp(value, 'i').test(attrValue) : false;
+                    case 'regex': return attrValue ? new RegExp(cmpValue, 'i').test(attrValue) : false;
                     default: return false;
                 }
             }
@@ -1402,16 +1603,21 @@
         return null;
     }
 
+    // 条件值显示：如实 stringify，避免布尔 false 被 || 吞成空串、布尔 true 伪装成字符串
+    function fmtConditionValue(v) {
+        return v === undefined || v === null ? '' : String(v);
+    }
+
     function formatCondition(cond) {
         switch (cond.type) {
             case 'alwaysTrue': return `总是为真`;
             case 'alwaysFalse': return `总是为假`;
             case 'elementExists': return `存在 ${cond.selector}`;
             case 'elementVisible': return `可见 ${cond.selector}`;
-            case 'elementText': return `文本 ${cond.match} "${cond.value}"`;
-            case 'elementAttribute': return `属性 ${cond.selector} [${cond.attribute}] ${cond.match} "${cond.value || ''}"`;
-            case 'urlMatch': return `URL ${cond.match || 'contains'} "${cond.value || ''}"`;
-            case 'variableMatch': return `变量 ${cond.name} ${cond.match || 'eq'} "${cond.value || ''}"`;
+            case 'elementText': return `文本 ${cond.match} "${fmtConditionValue(cond.value)}"`;
+            case 'elementAttribute': return `属性 ${cond.selector} [${cond.attribute}] ${cond.match} "${fmtConditionValue(cond.value)}"`;
+            case 'urlMatch': return `URL ${cond.match || 'contains'} "${fmtConditionValue(cond.value)}"`;
+            case 'variableMatch': return `变量 ${cond.name} ${cond.match || 'eq'} "${fmtConditionValue(cond.value)}"`;
             default: return cond.type;
         }
     }
@@ -1448,6 +1654,41 @@
         else idx = spec.index - 1;
         return (idx >= 0 && idx < options.length) ? options[idx] : null;
     };
+
+    // ============ 上传文件缓存 ============
+    // 按 URL 缓存云端文件的二进制内容（base64 编码存入 GM 存储），避免同一文件重复下载。
+    // 每个上传动作可通过 cache 字段控制：默认启用；设为 false 时本次不读缓存并清除该 URL 的旧缓存，
+    // 用于强制重新拉取（如云端文件已更新），避免缓存一直不变。
+    const UPLOAD_CACHE_KEY = 'workflow_upload_cache';
+
+    function getUploadCache() {
+        return GM_getValue(UPLOAD_CACHE_KEY, {}) || {};
+    }
+
+    function saveUploadCache(cache) {
+        GM_setValue(UPLOAD_CACHE_KEY, cache);
+    }
+
+    // ArrayBuffer → base64 字符串（分块拼接，避免超大文件一次性 String.fromCharCode 栈溢出）
+    function arrayBufferToBase64(buffer) {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const chunkSize = 8192;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+        }
+        return btoa(binary);
+    }
+
+    // base64 字符串 → ArrayBuffer
+    function base64ToArrayBuffer(base64) {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
 
     const actionExecutors = {
         // 填写输入框
@@ -1784,9 +2025,13 @@
             const selector = replaceVariables(action.selector, variables);
             const duration = action.duration || 8000;
             const color = action.color || 'rgba(255, 0, 0, 0.25)';
-            const borderColor = action.borderColor || '#f00';
+            const borderColor = action.borderColor || '#ff0000';
 
             const element = await getElement(selector);
+
+            // 输出选择器匹配到的元素数量，便于排查选择器是否精确
+            const matchCount = countElements(selector);
+            addLog(`🔍 选择器 "${selector}" 匹配到 ${matchCount} 个元素`, 'info');
 
             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
             await sleep(300);
@@ -1804,7 +2049,7 @@
             background: ${color};
             z-index: 999999;
             pointer-events: none;
-            border-radius: 4px;
+            border-radius:var(--wf-radius-sm);
             box-shadow: 0 0 10px ${borderColor}, 0 0 20px ${borderColor}44;
             animation: workflow-highlight-pulse 0.8s ease-in-out infinite alternate;
         `;
@@ -1818,7 +2063,7 @@
             color: white;
             font-size: 11px;
             padding: 2px 8px;
-            border-radius: 3px;
+            border-radius:var(--wf-radius-sm);
             white-space: nowrap;
             font-family: monospace;
         `;
@@ -2032,6 +2277,98 @@
             addLog(`✓ 下载文件: ${filename}（${(content.length / 1024).toFixed(1)} KB）`, 'success');
         },
 
+        // 从云端 URL 拉取文件并注入页面的 <input type="file">
+        // 原理：网页上传底层都是 input[type=file]，系统级文件选择对话框无法被脚本控制，
+        // 故绕过对话框，用 DataTransfer 把 File 直接塞进 input.files 再触发 change，
+        // 框架（Ant/Element/原生）会照常把文件传到业务服务器。
+        // 缓存：按 URL 缓存文件二进制，避免同一文件重复下载。cache 字段控制（默认 true），
+        // 设为 false 时本次不读缓存并清除该 URL 的旧缓存，用于强制重新拉取。
+        upload: async function(action, variables) {
+            const selector = replaceVariables(action.selector, variables);
+            const url = replaceVariables(action.url, variables);
+            const filename = replaceVariables(action.filename || 'upload.bin', variables);
+            const mimeType = action.mimeType ? replaceVariables(action.mimeType, variables) : '';
+            const waitAfterUpload = action.waitAfterUpload || 2000;
+            const index = action.index || 0;
+            // 缓存控制：默认启用，显式设为 false 时禁用并清除该 URL 的旧缓存
+            const useCache = action.cache !== false;
+
+            let arrayBuffer;
+
+            if (useCache) {
+                // 尝试命中缓存
+                const cached = getUploadCache()[url];
+                if (cached) {
+                    addLog(`→ 命中缓存: ${url}`, 'info');
+                    arrayBuffer = base64ToArrayBuffer(cached.data);
+                }
+            } else {
+                // cache:false —— 清除该 URL 的缓存，强制重新拉取，避免缓存一直不变
+                const cache = getUploadCache();
+                if (cache[url]) {
+                    delete cache[url];
+                    saveUploadCache(cache);
+                    addLog(`→ 已清空缓存: ${url}`, 'info');
+                } else {
+                    addLog(`→ 未启用缓存: ${url}`, 'info');
+                }
+            }
+
+            // 缓存未命中或被禁用时，从云端请求
+            if (!arrayBuffer) {
+                // 1. 用 GM_xmlhttpRequest 获取二进制（可跨域、绕过 CSP；@connect 需覆盖目标域名）
+                addLog(`→ 从云端请求文件: ${url}`, 'info');
+                arrayBuffer = await new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url,
+                        responseType: 'arraybuffer',
+                        timeout: 30000,
+                        onload: (res) => res.status >= 200 && res.status < 300
+                            ? resolve(res.response)
+                            : reject(new Error(`云端请求失败: HTTP ${res.status}`)),
+                        onerror: () => reject(new Error('云端请求失败: 网络错误')),
+                        ontimeout: () => reject(new Error('云端请求超时')),
+                    });
+                });
+
+                // 启用缓存时写入（cache:false 不写回，确保下次仍重新拉取）
+                if (useCache) {
+                    try {
+                        const cache = getUploadCache();
+                        cache[url] = {
+                            data: arrayBufferToBase64(arrayBuffer),
+                            timestamp: Date.now()
+                        };
+                        saveUploadCache(cache);
+                        addLog(`→ 已缓存文件: ${url}（${(arrayBuffer.byteLength / 1024).toFixed(1)} KB）`, 'info');
+                    } catch (e) {
+                        // 大文件可能超出 GM 存储限制，缓存失败不影响上传
+                        addLog(`⚠ 缓存写入失败: ${e.message}`, 'warning');
+                    }
+                }
+            }
+
+            // 2. 构造 File —— 用 unsafeWindow 与页面同上下文，避免框架 instanceof File 检查失败
+            const win = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+            const blob = new win.Blob([arrayBuffer], { type: mimeType || undefined });
+            const file = new win.File([blob], filename, { type: blob.type || undefined });
+            const dt = new win.DataTransfer();
+            dt.items.add(file);
+
+            // 3. 注入到 <input type="file"> 并触发 change，框架据此上传到业务服务器
+            const input = await getElement(selector, 5000, index);
+            if (input.tagName !== 'INPUT' || input.type !== 'file') {
+                throw new Error(`目标不是文件输入框: ${selector}`);
+            }
+            input.files = dt.files;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            addLog(`✓ 上传文件: ${filename}（${(arrayBuffer.byteLength / 1024).toFixed(1)} KB）→ ${selector}`, 'success');
+
+            // 4. 等待框架把文件传到业务服务器完成
+            await sleep(waitAfterUpload);
+        },
+
         // 空操作（占位符/跳转目标）
         noop: async function(action) {
             if (action.description) {
@@ -2057,14 +2394,57 @@
     function setUpdateUIRef$4(fn) { _updateUI$4 = fn; }
     function updateUI$5() { if (_updateUI$4) _updateUI$4(); }
 
-    async function executeAction(action, variables, config) {
+    async function executeAction(action, variables, config, stepIndex, actionIndex) {
         if (stopRequested) return;
 
-        const executor = actionExecutors[action.type];
+        // 应用运行时覆盖（选择器、上传缓存）：构造浅拷贝替换字段，不影响原 action
+        let effectiveAction = action;
+        if (stepIndex !== undefined && actionIndex !== undefined) {
+            const overrides = {};
+            if (action.selector !== undefined) {
+                const effectiveSelector = getEffectiveActionSelector(stepIndex, actionIndex);
+                if (effectiveSelector !== action.selector) overrides.selector = effectiveSelector;
+            }
+            // 上传缓存覆盖：cache 字段，true 启用 / false 禁用（强制重新拉取）
+            if (action.type === 'upload') {
+                const effectiveCache = getEffectiveActionCache(stepIndex, actionIndex);
+                if (effectiveCache !== (action.cache !== false)) overrides.cache = effectiveCache;
+            }
+            if (Object.keys(overrides).length) {
+                effectiveAction = Object.assign({}, action, overrides);
+            }
+        }
+
+        const executor = actionExecutors[effectiveAction.type];
         if (executor) {
-            await executor(action, variables, config);
+            await executor(effectiveAction, variables, config);
         } else {
-            addLog(`✗ 未知动作类型: ${action.type}`, 'error');
+            addLog(`✗ 未知动作类型: ${effectiveAction.type}`, 'error');
+        }
+    }
+
+    // 工作流全部步骤执行完毕后的收尾：若开启 autoMatchOnComplete，
+    // 则根据当前页面 URL 快速匹配并切换到匹配的工作流（等同点击面板⚡图标）。
+    // 注意：匹配命中时会切换工作流，switchWorkflow 会停止当前运行并重置状态，故仅在整流完成时调用。
+    // 为适配登录后跳转等场景，设置 autoMatchPending 标记，由新页面加载后的 url-monitor 检测并执行匹配。
+    function maybeAutoMatchAfterComplete() {
+        if (workflow?.execution?.autoMatchOnComplete) {
+            // 立即设置"待匹配"标记并保存，供新页面加载后检测使用
+            addLog(`→ 工作流执行完毕，设置待匹配标记（当前 URL: ${location.href}）`, 'info');
+            setAutoMatchPending(true);
+            saveState();
+
+            // 同时在旧页面尝试立即匹配（适用于不跳转或同页面完成场景）
+            // 使用 setTimeout 给予短暂时间让页面跳转触发，如果跳转则此 setTimeout 会被中断
+            const delay = workflow.execution.autoMatchDelay || 800;
+            setTimeout(() => {
+                if (!isRunning && autoMatchPending) {  // 仍处于待匹配状态说明没跳转
+                    addLog(`→ 未检测到页面跳转，在当前页面执行自动匹配`, 'info');
+                    setAutoMatchPending(false);
+                    saveState();
+                    autoMatchWorkflow();
+                }
+            }, delay);
         }
     }
 
@@ -2107,7 +2487,7 @@
             try {
                 // 每次执行前重新合并，确保上一个 extract 写入的值对后续动作可见
                 const mergedVars = getMergedVariables();
-                await executeAction(action, mergedVars, workflow);
+                await executeAction(action, mergedVars, workflow, stepIndex, actionIndex);
                 // extract 动作会直接写入 mergedVars，将新变量同步回 runtimeVariables
                 setRuntimeVariables(Object.assign({}, runtimeVariables, mergedVars));
                 await sleep(workflow.execution.stepDelay);
@@ -2184,6 +2564,7 @@
                     setWorkflowCompleted(true);
                     setAutoContinue(false);
                     addLog(`🎉 工作流 "${workflow.name}" 已完成所有步骤！`, 'success');
+                    maybeAutoMatchAfterComplete();
                     break;
                 }
             }
@@ -2226,6 +2607,7 @@
                     saveState();
                     addLog(`🎉 工作流 "${workflow.name}" 已完成所有步骤！`, 'success');
                     addLog(`所有步骤已完成，您可以点击"重置状态"开始新流程`, 'info');
+                    maybeAutoMatchAfterComplete();
                     break;
                 } else {
                     setCurrentStepIndex(currentStepIndex + 1);
@@ -2346,6 +2728,7 @@
                     setWorkflowCompleted(true);
                     setAutoContinue(false);
                     addLog(`🎉 工作流 "${workflow.name}" 已完成所有步骤！`, 'success');
+                    maybeAutoMatchAfterComplete();
                     break;
                 } else {
                     setCurrentStepIndex(currentStepIndex + 1);
@@ -2408,10 +2791,10 @@
         const container = ensureContainer();
 
         const colors = {
-            success: { bg: '#f0fff4', border: '#9ae6b4', color: '#22543d', icon: '✓' },
-            error: { bg: '#fff5f5', border: '#fc8181', color: '#742a2a', icon: '✗' },
-            warning: { bg: '#fffaf0', border: '#fbd38d', color: '#744210', icon: '⚠' },
-            info: { bg: '#ebf8ff', border: '#90cdf4', color: '#2a4365', icon: 'ℹ' }
+            success: { bg: 'var(--wf-success-light)', border: 'var(--wf-success-border)', color: 'var(--wf-success-text)', icon: '✓' },
+            error: { bg: 'var(--wf-error-light)', border: 'var(--wf-error-accent)', color: 'var(--wf-error-text)', icon: '✗' },
+            warning: { bg: 'var(--wf-warning-light)', border: 'var(--wf-warning-border)', color: 'var(--wf-warning-text)', icon: '⚠' },
+            info: { bg: 'var(--wf-primary-light)', border: 'var(--wf-primary-border)', color: 'var(--wf-primary-text)', icon: 'ℹ' }
         };
 
         const c = colors[type] || colors.info;
@@ -2421,7 +2804,7 @@
         padding: 10px 18px;
         background: ${c.bg};
         border: 1px solid ${c.border};
-        border-radius: 8px;
+        border-radius:var(--wf-radius-lg);
         color: ${c.color};
         font-size: 13px;
         font-weight: 500;
@@ -2463,19 +2846,21 @@
 
         return new Promise((resolve) => {
             const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:200001;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.4);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+            overlay.id = 'wf-confirm-overlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:200001;display:flex;align-items:center;justify-content:center;background:var(--wf-overlay);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
 
+            // P0: 确认按钮实色白字用 -600/-700 档，确保对比度达标
             const colors = {
-                warning: { btn: '#dd6b20', hover: '#c05621' },
-                danger: { btn: '#e53e3e', hover: '#c53030' },
-                info: { btn: '#4299e1', hover: '#3182ce' }
+                warning: { btn: 'var(--wf-warning)', hover: 'var(--wf-warning-hover)' },
+                danger: { btn: 'var(--wf-error)', hover: 'var(--wf-error-hover)' },
+                info: { btn: 'var(--wf-primary-dark)', hover: 'var(--wf-primary-darker)' }
             };
             const c = colors[type] || colors.warning;
 
             const dialog = document.createElement('div');
             dialog.style.cssText = `
-            background: white;
-            border-radius: 12px;
+            background: var(--wf-surface);
+            border-radius:var(--wf-radius-xl);
             box-shadow: 0 20px 60px rgba(0,0,0,0.2);
             padding: 24px;
             min-width: 320px;
@@ -2484,11 +2869,11 @@
         `;
 
             dialog.innerHTML = `
-            <div style="font-size:16px;font-weight:600;color:#1a202c;margin-bottom:12px;">${title}</div>
-            <div style="font-size:14px;color:#4a5568;line-height:1.5;margin-bottom:20px;">${message}</div>
+            <div style="font-size:16px;font-weight:600;color:var(--wf-text);margin-bottom:12px;">${title}</div>
+            <div style="font-size:14px;color:var(--wf-text-secondary);line-height:1.5;margin-bottom:20px;">${message}</div>
             <div style="display:flex;justify-content:flex-end;gap:8px;">
-                <button id="wf-confirm-cancel" style="padding:7px 16px;border:1px solid #e2e8f0;background:white;border-radius:6px;font-size:13px;cursor:pointer;color:#4a5568;transition:background 0.15s;">${cancelText}</button>
-                <button id="wf-confirm-ok" style="padding:7px 16px;border:none;background:${c.btn};color:white;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">${confirmText}</button>
+                <button id="wf-confirm-cancel" style="padding:7px 16px;border:1px solid var(--wf-border);background:var(--wf-surface);border-radius:var(--wf-radius-md);font-size:13px;cursor:pointer;color:var(--wf-text-secondary);transition:background 0.15s;">${cancelText}</button>
+                <button id="wf-confirm-ok" style="padding:7px 16px;border:none;background:${c.btn};color:white;border-radius:var(--wf-radius-md);font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">${confirmText}</button>
             </div>
         `;
 
@@ -2691,8 +3076,8 @@
     function updateWorkflowInfoDisplay() {
         const nameEl = document.querySelector('#workflow-panel .wf-name');
         if (nameEl && workflow) {
-            const groupTag = workflow.group ? ` <span style="font-size:10px;opacity:0.7;background:rgba(255,255,255,0.15);padding:1px 5px;border-radius:3px;">${escapeHtml(workflow.group)}</span>` : '';
-            nameEl.innerHTML = `📋 ${escapeHtml(workflow.name)}${groupTag} <span id="workflow-config-version" style="font-size:10px;color:#a0aec0;">v${escapeHtml(workflow.version || '1.0.0')}</span>`;
+            const groupTag = workflow.group ? ` <span style="font-size:10px;opacity:0.7;background:rgba(255,255,255,0.15);padding:1px 5px;border-radius:var(--wf-radius-sm);">${escapeHtml(workflow.group)}</span>` : '';
+            nameEl.innerHTML = `📋 ${escapeHtml(workflow.name)}${groupTag} <span id="workflow-config-version" style="font-size:10px;color:var(--wf-text-faint);">v${escapeHtml(workflow.version || '1.0.0')}</span>`;
         }
     }
 
@@ -2836,7 +3221,7 @@
         updateUI$3();
 
         try {
-            await executeAction(action, workflow.variables, workflow);
+            await executeAction(action, workflow.variables, workflow, stepIndex, actionIndex);
             addLog(`✓ 动作 "${action.type}" 执行完成`, 'success');
         } catch (e) {
             console.error('[Single Action] Error:', e);
@@ -2863,20 +3248,20 @@
         // Modal overlay
         const modal = document.createElement('div');
         modal.id = 'config-editor-modal';
-        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.4);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;display:flex;align-items:center;justify-content:center;background:var(--wf-overlay);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
         modal.innerHTML = `
-        <div style="background:white;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.2);width:90%;max-width:680px;max-height:85vh;display:flex;flex-direction:column;animation:wfModalFadeIn 0.15s ease-out;">
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #edf2f7;">
-                <div style="font-size:15px;font-weight:600;color:#1a202c;">📝 工作流配置编辑器</div>
-                <button data-action="close" style="width:24px;height:24px;border:none;background:#f7fafc;border-radius:6px;cursor:pointer;font-size:14px;color:#718096;display:flex;align-items:center;justify-content:center;">×</button>
+        <div style="background:var(--wf-surface);border-radius:var(--wf-radius-xl);box-shadow:0 20px 60px rgba(0,0,0,0.2);width:90%;max-width:680px;max-height:85vh;display:flex;flex-direction:column;animation:wfModalFadeIn 0.15s ease-out;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--wf-border-muted);">
+                <div style="font-size:15px;font-weight:600;color:var(--wf-text);">📝 工作流配置编辑器</div>
+                <button data-action="close" style="width:24px;height:24px;border:none;background:var(--wf-surface-muted);border-radius:var(--wf-radius-md);cursor:pointer;font-size:14px;color:var(--wf-text-muted);display:flex;align-items:center;justify-content:center;">×</button>
             </div>
             <div style="flex:1;padding:16px 20px;min-height:0;overflow:hidden;display:flex;">
-                <textarea id="config-textarea" style="width:100%;height:100%;min-height:50vh;padding:12px;border:1px solid #e2e8f0;border-radius:8px;font-family:Consolas,Monaco,'Courier New',monospace;font-size:12px;line-height:1.5;resize:none;outline:none;transition:border-color 0.15s;" placeholder="在此输入工作流配置 (JSON格式)..."></textarea>
+                <textarea id="config-textarea" style="width:100%;height:100%;min-height:50vh;padding:12px;border:1px solid var(--wf-border);border-radius:var(--wf-radius-lg);font-family:Consolas,Monaco,'Courier New',monospace;font-size:12px;line-height:1.5;resize:none;transition:border-color 0.15s;" placeholder="在此输入工作流配置 (JSON格式)..."></textarea>
             </div>
-            <div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid #edf2f7;">
-                <button data-action="import" style="padding:7px 14px;border:1px solid #e2e8f0;background:white;border-radius:6px;font-size:12px;cursor:pointer;color:#4a5568;">📁 导入文件</button>
-                <button data-action="cancel" style="padding:7px 14px;border:1px solid #e2e8f0;background:white;border-radius:6px;font-size:12px;cursor:pointer;color:#4a5568;">取消</button>
-                <button data-action="save" style="padding:7px 14px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">💾 保存配置</button>
+            <div style="display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--wf-border-muted);">
+                <button data-action="import" style="padding:7px 14px;border:1px solid var(--wf-border);background:var(--wf-surface);border-radius:var(--wf-radius-md);font-size:12px;cursor:pointer;color:var(--wf-text-secondary);">📁 导入文件</button>
+                <button data-action="cancel" style="padding:7px 14px;border:1px solid var(--wf-border);background:var(--wf-surface);border-radius:var(--wf-radius-md);font-size:12px;cursor:pointer;color:var(--wf-text-secondary);">取消</button>
+                <button data-action="save" style="padding:7px 14px;border:none;background:var(--wf-primary);color:white;border-radius:var(--wf-radius-md);font-size:12px;font-weight:500;cursor:pointer;">💾 保存配置</button>
             </div>
         </div>
     `;
@@ -2966,17 +3351,17 @@
     function setUpdateUIRef(fn) { _updateUI = fn; }
     function updateUI$1() { if (_updateUI) _updateUI(); }
 
-    const ACTION_TYPE_LABELS = { fill: '填写', select: '下拉选择', click: '点击', check: '勾选', radio: '单选', waitFor: '等待元素', wait: '等待', scroll: '滚动到元素', focus: '聚焦', scrollTo: '滚动页面', scrollBy: '相对滚动', hover: '悬停', highlight: '高亮', custom: '自定义脚本', urlReplace: 'URL替换', condition: '条件判断', noop: '空操作', extract: '提取变量', setVariable: '设置变量', download: '下载文件' };
+    const ACTION_TYPE_LABELS = { fill: '填写', select: '下拉选择', click: '点击', check: '勾选', radio: '单选', waitFor: '等待元素', wait: '等待', scroll: '滚动到元素', focus: '聚焦', scrollTo: '滚动页面', scrollBy: '相对滚动', hover: '悬停', highlight: '高亮', custom: '自定义脚本', urlReplace: 'URL替换', condition: '条件判断', noop: '空操作', extract: '提取变量', setVariable: '设置变量', download: '下载文件', upload: '上传文件' };
 
     const S = {
-        input: 'width:100%;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;outline:none;transition:border-color 0.15s;',
-        label: 'display:block;font-size:12px;color:#4a5568;margin-bottom:4px;font-weight:500;',
+        input: 'width:100%;padding:6px 10px;border:1px solid var(--wf-border);border-radius:var(--wf-radius-md);font-size:13px;transition:border-color 0.15s;',
+        label: 'display:block;font-size:12px;color:var(--wf-text-secondary);margin-bottom:4px;font-weight:500;',
         row: 'margin-bottom:14px;',
-        card: 'background:white;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:12px;',
-        btn: 'padding:6px 12px;border:1px solid #e2e8f0;background:white;border-radius:6px;font-size:12px;cursor:pointer;color:#4a5568;transition:all 0.15s;',
-        btnPrimary: 'padding:6px 16px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;',
-        tab: 'padding:10px 18px;border:none;background:transparent;font-size:13px;cursor:pointer;color:#718096;border-bottom:2px solid transparent;transition:all 0.2s;',
-        tabActive: 'color:#667eea;border-bottom-color:#667eea;font-weight:600;',
+        card: 'background:var(--wf-surface);border:1px solid var(--wf-border);border-radius:var(--wf-radius-lg);padding:16px;margin-bottom:12px;',
+        btn: 'padding:6px 12px;border:1px solid var(--wf-border);background:var(--wf-surface);border-radius:var(--wf-radius-md);font-size:12px;cursor:pointer;color:var(--wf-text-secondary);transition:all 0.15s;',
+        btnPrimary: 'padding:6px 16px;border:none;background:var(--wf-primary);color:white;border-radius:var(--wf-radius-md);font-size:12px;font-weight:500;cursor:pointer;',
+        tab: 'padding:10px 18px;border:none;background:transparent;font-size:13px;cursor:pointer;color:var(--wf-text-muted);border-bottom:2px solid transparent;transition:all 0.2s;',
+        tabActive: 'color:var(--wf-primary);border-bottom-color:var(--wf-primary);font-weight:600;',
     };
 
     function openVisualEditor(initialTab = 'info') {
@@ -3000,20 +3385,20 @@
 
         const modal = document.createElement('div');
         modal.id = 'visual-editor-modal';
-        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;display:flex;align-items:center;justify-content:center;background:var(--wf-overlay);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
 
         modal.innerHTML = `
-    <div style="background:white;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.25);width:92%;max-width:920px;height:90vh;display:flex;flex-direction:column;animation:wfModalFadeIn 0.15s ease-out;overflow:hidden;">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 24px;border-bottom:1px solid #edf2f7;flex-shrink:0;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+    <div style="background:var(--wf-surface);border-radius:var(--wf-radius-xl);box-shadow:0 20px 60px rgba(0,0,0,0.25);width:92%;max-width:920px;height:90vh;display:flex;flex-direction:column;animation:wfModalFadeIn 0.15s ease-out;overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 24px;border-bottom:1px solid var(--wf-border-muted);flex-shrink:0;background:var(--wf-brand-gradient);">
             <div style="font-size:15px;font-weight:600;color:white;">🛠️ 可视化编辑器</div>
             <div style="display:flex;gap:8px;align-items:center;">
-                <button id="ve-advanced-btn" style="padding:5px 10px;border:1px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.2);border-radius:5px;font-size:11px;cursor:pointer;color:white;transition:all 0.15s;">📝 高级模式</button>
-                <button id="ve-close-btn" style="width:26px;height:26px;border:none;background:rgba(255,255,255,0.2);border-radius:50%;cursor:pointer;font-size:16px;color:white;display:flex;align-items:center;justify-content:center;">×</button>
+                <button id="ve-advanced-btn" style="padding:5px 10px;border:1px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.2);border-radius:var(--wf-radius-md);font-size:11px;cursor:pointer;color:white;transition:all 0.15s;">📝 高级模式</button>
+                <button id="ve-close-btn" style="width:26px;height:26px;border:none;background:rgba(255,255,255,0.2);border-radius:var(--wf-radius-circle);cursor:pointer;font-size:16px;color:white;display:flex;align-items:center;justify-content:center;">×</button>
             </div>
         </div>
-        <div id="ve-tabs" style="display:flex;gap:0;padding:0 24px;border-bottom:1px solid #edf2f7;background:#f7fafc;flex-shrink:0;"></div>
+        <div id="ve-tabs" style="display:flex;gap:0;padding:0 24px;border-bottom:1px solid var(--wf-border-muted);background:var(--wf-surface-muted);flex-shrink:0;"></div>
         <div id="ve-content" style="flex:1;display:flex;min-height:0;overflow:hidden;"></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 24px;border-top:1px solid #edf2f7;flex-shrink:0;background:#f7fafc;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 24px;border-top:1px solid var(--wf-border-muted);flex-shrink:0;background:var(--wf-surface-muted);">
             <button id="ve-json-toggle" style="${S.btn}">📋 预览JSON</button>
             <div style="display:flex;gap:8px;">
                 <button id="ve-cancel-btn" style="${S.btn}">取消</button>
@@ -3049,22 +3434,22 @@
         // 基本信息 - 改进样式
         function renderInfoPanel(container) {
             container.innerHTML = `
-        <div style="flex:1;padding:24px;overflow-y:auto;background:#f7fafc;">
+        <div style="flex:1;padding:24px;overflow-y:auto;background:var(--wf-surface-muted);">
             <div style="max-width:640px;margin:0 auto;">
                 <div style="${S.card}">
-                    <h3 style="font-size:14px;font-weight:600;color:#2d3748;margin-bottom:20px;border-bottom:1px solid #edf2f7;padding-bottom:12px;">基本设置</h3>
+                    <h3 style="font-size:14px;font-weight:600;color:var(--wf-text-heading);margin-bottom:20px;border-bottom:1px solid var(--wf-border-muted);padding-bottom:12px;">基本设置</h3>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                        <div><label style="${S.label}">工作流名称 <span style="color:#e53e3e;">*</span></label><input id="ve-name" type="text" value="${(wc.name || '').replace(/"/g, '&quot;')}" style="${S.input}" placeholder="输入工作流名称"></div>
+                        <div><label style="${S.label}">工作流名称 <span style="color:var(--wf-error);">*</span></label><input id="ve-name" type="text" value="${(wc.name || '').replace(/"/g, '&quot;')}" style="${S.input}" placeholder="输入工作流名称"></div>
                         <div><label style="${S.label}">版本号</label><input id="ve-version" type="text" value="${(wc.version || '1.0.0').replace(/"/g, '&quot;')}" style="${S.input}" placeholder="1.0.0"></div>
                         <div><label style="${S.label}">分组</label><input id="ve-group" type="text" value="${(wc.group || '').replace(/"/g, '&quot;')}" style="${S.input}" placeholder="留空表示未分组"></div>
                         <div><label style="${S.label}">排序</label><input id="ve-order" type="number" value="${wc.order || 0}" style="${S.input}"></div>
                     </div>
                     <div style="margin-top:16px;">
-                        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><input type="checkbox" id="ve-enabled" ${wc.enabled !== false ? 'checked' : ''} style="width:16px;height:16px;margin:0;"> <span style="font-size:13px;color:#4a5568;">启用此工作流</span></label>
+                        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><input type="checkbox" id="ve-enabled" ${wc.enabled !== false ? 'checked' : ''} style="width:16px;height:16px;margin:0;"> <span style="font-size:13px;color:var(--wf-text-secondary);">启用此工作流</span></label>
                     </div>
                 </div>
                 <div style="${S.card}">
-                    <h3 style="font-size:14px;font-weight:600;color:#2d3748;margin-bottom:12px;">使用说明</h3>
+                    <h3 style="font-size:14px;font-weight:600;color:var(--wf-text-heading);margin-bottom:12px;">使用说明</h3>
                     <textarea id="ve-description" style="${S.input}height:360px;resize:vertical;font-family:inherit;line-height:1.5;" placeholder="描述此工作流的用途和使用方法...">${(wc.description || '').replace(/</g, '&lt;')}</textarea>
                 </div>
             </div>
@@ -3119,10 +3504,10 @@
         // 变量引用徽章：展示该变量被引用的 action 数量
         function varRefBadgeHtml(key) {
             const n = (varRefs.get(key) || []).length;
-            const base = 'padding:3px 10px;border-radius:10px;font-size:11px;flex-shrink:0;white-space:nowrap;';
+            const base = 'padding:3px 10px;border-radius:var(--wf-radius-pill);font-size:11px;flex-shrink:0;white-space:nowrap;';
             const attr = `data-var-key="${key.replace(/"/g, '&quot;')}"`;
-            if (!n) return `<span class="ve-var-ref-badge" ${attr} style="${base}background:#f7fafc;color:#a0aec0;border:1px solid #e2e8f0;">未引用</span>`;
-            return `<span class="ve-var-ref-badge" ${attr} style="${base}background:#ebf8ff;color:#2b6cb0;border:1px solid #bee3f8;cursor:help;">🔗 ${n} 处引用</span>`;
+            if (!n) return `<span class="ve-var-ref-badge" ${attr} style="${base}background:var(--wf-surface-muted);color:var(--wf-text-faint);border:1px solid var(--wf-border);">未引用</span>`;
+            return `<span class="ve-var-ref-badge" ${attr} style="${base}background:var(--wf-primary-light);color:var(--wf-primary-darker);border:1px solid var(--wf-primary-border-light);cursor:help;">🔗 ${n} 处引用</span>`;
         }
 
         function removeVarRefTooltip() {
@@ -3144,14 +3529,14 @@
                             ? escapeHtml(r.action.description)
                             : `${escapeHtml(ACTION_TYPE_LABELS[r.action.type] || r.action.type || '未知')}（无描述）`;
                         return `<div style="display:flex;gap:6px;align-items:baseline;padding:3px 0;font-size:12px;line-height:1.5;">
-                        <span style="color:#a0aec0;flex-shrink:0;">${i + 1}.</span>
-                        <span><span style="color:#63b3ed;">[${escapeHtml(r.stepName || '')}]</span> ${label}</span>
+                        <span style="color:var(--wf-text-faint);flex-shrink:0;">${i + 1}.</span>
+                        <span><span style="color:var(--wf-primary);">[${escapeHtml(r.stepName || '')}]</span> ${label}</span>
                     </div>`;
                     }).join('');
 
                     const tooltip = document.createElement('div');
                     tooltip.id = 've-var-ref-tooltip';
-                    tooltip.style.cssText = 'position:fixed;z-index:100001;max-width:400px;padding:10px 12px;background:#2d3748;color:#e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.3);font-family:inherit;pointer-events:none;';
+                    tooltip.style.cssText = 'position:fixed;z-index:100001;max-width:400px;padding:10px 12px;background:var(--wf-text-heading);color:var(--wf-border);border-radius:var(--wf-radius-lg);box-shadow:0 4px 16px rgba(0,0,0,0.3);font-family:inherit;pointer-events:none;';
                     tooltip.innerHTML = `
                     <div style="font-size:12px;font-weight:600;margin-bottom:6px;color:white;">🔗 <code style="font-family:monospace;">${escapeHtml(key)}</code> 被 ${list.length} 个动作引用：</div>
                     ${items}`;
@@ -3178,23 +3563,23 @@
             const varEntries = Object.entries(vars);
 
             container.innerHTML = `
-        <div style="flex:1;padding:24px;overflow-y:auto;background:#f7fafc;">
+        <div style="flex:1;padding:24px;overflow-y:auto;background:var(--wf-surface-muted);">
             <div style="max-width:640px;margin:0 auto;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <h3 style="font-size:14px;font-weight:600;color:#2d3748;">变量列表 (${varEntries.length})</h3>
+                    <h3 style="font-size:14px;font-weight:600;color:var(--wf-text-heading);">变量列表 (${varEntries.length})</h3>
                     <button id="ve-add-var" style="${S.btn}">+ 添加变量</button>
                 </div>
-                ${varEntries.length === 0 ? '<div style="text-align:center;padding:40px;color:#a0aec0;font-size:12px;background:white;border:1px dashed #cbd5e0;border-radius:8px;">暂无变量，点击上方按钮添加</div>' : ''}
+                ${varEntries.length === 0 ? '<div style="text-align:center;padding:40px;color:var(--wf-text-faint);font-size:12px;background:var(--wf-surface);border:1px dashed var(--wf-border-strong);border-radius:var(--wf-radius-lg);">暂无变量，点击上方按钮添加</div>' : ''}
                 <div id="ve-var-list">${varEntries.map(([k, v], i) => `
                     <div class="ve-var-row" style="${S.card}display:flex;gap:12px;align-items:center;">
                         <div style="flex:1;"><input type="text" value="${k.replace(/"/g, '&quot;')}" data-idx="${i}" data-role="key" data-old-key="${k}" style="${S.input}" placeholder="变量名"></div>
                         <div style="flex:1;"><input type="text" value="${String(v).replace(/"/g, '&quot;')}" data-idx="${i}" data-role="value" style="${S.input}" placeholder="变量值"></div>
                         ${varRefBadgeHtml(k)}
-                        <button data-idx="${i}" class="ve-var-del" style="padding:6px 10px;border:none;background:#fff5f5;color:#e53e3e;border-radius:6px;cursor:pointer;font-size:12px;">删除</button>
+                        <button data-idx="${i}" class="ve-var-del" style="padding:6px 10px;border:none;background:var(--wf-error-light);color:var(--wf-error);border-radius:var(--wf-radius-md);cursor:pointer;font-size:12px;">删除</button>
                     </div>
                 `).join('')}
-                <div style="margin-top:16px;padding:12px;background:#ebf8ff;border-radius:8px;font-size:12px;color:#4a5568;border:1px solid #bee3f8;">
-                    <strong>使用提示：</strong> 在工作流中使用 <code style="background:white;padding:2px 6px;border-radius:4px;font-family:monospace;">\u0024{变量名}</code> 来引用变量值
+                <div style="margin-top:16px;padding:12px;background:var(--wf-primary-light);border-radius:var(--wf-radius-lg);font-size:12px;color:var(--wf-text-secondary);border:1px solid var(--wf-primary-border-light);">
+                    <strong>使用提示：</strong> 在工作流中使用 <code style="background:var(--wf-surface);padding:2px 6px;border-radius:var(--wf-radius-sm);font-family:monospace;">\u0024{变量名}</code> 来引用变量值
                 </div>
             </div>
         </div>`;
@@ -3212,7 +3597,7 @@
                 <div style="flex:1;"><input type="text" value="${newKey}" data-idx="${idx}" data-role="key" data-old-key="${newKey}" style="${S.input}" placeholder="变量名"></div>
                 <div style="flex:1;"><input type="text" data-idx="${idx}" data-role="value" style="${S.input}" placeholder="变量值"></div>
                 ${varRefBadgeHtml(newKey)}
-                <button data-idx="${idx}" class="ve-var-del" style="padding:6px 10px;border:none;background:#fff5f5;color:#e53e3e;border-radius:6px;cursor:pointer;font-size:12px;">删除</button>`;
+                <button data-idx="${idx}" class="ve-var-del" style="padding:6px 10px;border:none;background:var(--wf-error-light);color:var(--wf-error);border-radius:var(--wf-radius-md);cursor:pointer;font-size:12px;">删除</button>`;
                 list.appendChild(row);
 
                 // 重新绑定所有事件
@@ -3283,14 +3668,14 @@
         // 执行管理 - 改进样式
         function renderExecutionPanel(container) {
             container.innerHTML = `
-        <div style="flex:1;padding:24px;overflow-y:auto;background:#f7fafc;">
+        <div style="flex:1;padding:24px;overflow-y:auto;background:var(--wf-surface-muted);">
             <div style="max-width:540px;margin:0 auto;">
                 <div style="${S.card}">
-                    <h3 style="font-size:14px;font-weight:600;color:#2d3748;margin-bottom:16px;">执行设置</h3>
+                    <h3 style="font-size:14px;font-weight:600;color:var(--wf-text-heading);margin-bottom:16px;">执行设置</h3>
                     <div style="${S.row}">
                         <label style="${S.label}">步骤间延迟 (毫秒)</label>
                         <input id="ve-stepdelay" type="number" value="${wc.execution.stepDelay || 500}" style="${S.input}">
-                        <div style="font-size:11px;color:#718096;margin-top:4px;">每个动作执行完毕后等待的时间</div>
+                        <div style="font-size:11px;color:var(--wf-text-muted);margin-top:4px;">每个动作执行完毕后等待的时间</div>
                     </div>
                     <div style="${S.row}">
                         <label style="${S.label}">错误处理策略</label>
@@ -3299,12 +3684,25 @@
                             <option value="stop" ${wc.execution.onError === 'stop' ? 'selected' : ''}>停止执行</option>
                             <option value="manual" ${wc.execution.onError === 'manual' ? 'selected' : ''}>手动处理</option>
                         </select>
-                        <div style="font-size:11px;color:#718096;margin-top:4px;">遇到错误时的处理方式</div>
+                        <div style="font-size:11px;color:var(--wf-text-muted);margin-top:4px;">遇到错误时的处理方式</div>
                     </div>
+                    <div style="${S.row}">
+                        <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+                            <input id="ve-automatch" type="checkbox" ${wc.execution.autoMatchOnComplete ? 'checked' : ''} style="width:16px;height:16px;margin:0;">
+                            执行完毕后自动匹配工作流
+                        </label>
+                        <div style="font-size:11px;color:var(--wf-text-muted);margin-top:4px;">整个工作流全部步骤执行完毕后，根据当前页面 URL 快速匹配并切换到匹配的工作流。适用于登录后跳转等场景。</div>
+                    </div>
+                    ${wc.execution.autoMatchOnComplete ? `
+                    <div style="${S.row}">
+                        <label style="${S.label}">自动匹配延迟（毫秒）</label>
+                        <input id="ve-automatch-delay" type="number" value="${wc.execution.autoMatchDelay || 800}" style="${S.input}">
+                        <div style="font-size:11px;color:var(--wf-text-muted);margin-top:4px;">等待页面跳转完成的时间。默认 800ms，可根据网络情况调整。</div>
+                    </div>` : ''}
                 </div>
-                <div style="margin-top:16px;padding:16px;background:#f7fafc;border-radius:8px;font-size:12px;color:#4a5568;">
+                <div style="margin-top:16px;padding:16px;background:var(--wf-surface-muted);border-radius:var(--wf-radius-lg);font-size:12px;color:var(--wf-text-secondary);">
                     <div style="font-weight:600;margin-bottom:8px;">策略说明</div>
-                    <ul style="margin:0;padding-left:20px;color:#718096;line-height:1.6;">
+                    <ul style="margin:0;padding-left:20px;color:var(--wf-text-muted);line-height:1.6;">
                         <li><strong>继续执行</strong>：跳过错误动作，继续执行后续步骤</li>
                         <li><strong>停止执行</strong>：遇到错误时立即停止整个工作流</li>
                         <li><strong>手动处理</strong>：暂停工作流，等待用户处理后手动继续</li>
@@ -3314,17 +3712,25 @@
         </div>`;
             container.querySelector('#ve-stepdelay').oninput = (e) => { wc.execution.stepDelay = Number(e.target.value); };
             container.querySelector('#ve-onerror').onchange = (e) => { wc.execution.onError = e.target.value; };
+            container.querySelector('#ve-automatch').onchange = (e) => {
+                wc.execution.autoMatchOnComplete = e.target.checked;
+                renderExecutionPanel(container);  // 重新渲染以显示/隐藏延迟输入框
+            };
+            const delayInput = container.querySelector('#ve-automatch-delay');
+            if (delayInput) {
+                delayInput.oninput = (e) => { wc.execution.autoMatchDelay = Number(e.target.value); };
+            }
         }
 
         // 步骤流程 - 已移除
         function renderStepsPanel(container) {
             container.innerHTML = `
         <div style="flex:1;padding:40px;display:flex;align-items:center;justify-content:center;">
-            <div style="text-align:center;color:#a0aec0;">
+            <div style="text-align:center;color:var(--wf-text-faint);">
                 <div style="font-size:48px;margin-bottom:16px;">🚧</div>
                 <div style="font-size:14px;">步骤流程编辑功能已移除</div>
                 <div style="font-size:12px;margin-top:8px;">请使用"高级模式"编辑工作流配置</div>
-                <button id="ve-to-advanced-btn" style="margin-top:16px;padding:8px 16px;border:none;background:#667eea;color:white;border-radius:6px;font-size:12px;cursor:pointer;">切换到高级模式</button>
+                <button id="ve-to-advanced-btn" style="margin-top:16px;padding:8px 16px;border:none;background:var(--wf-primary);color:white;border-radius:var(--wf-radius-md);font-size:12px;cursor:pointer;">切换到高级模式</button>
             </div>
         </div>`;
             container.querySelector('#ve-to-advanced-btn').onclick = () => {
@@ -3349,7 +3755,7 @@
                 renderContent();
                 document.getElementById('ve-json-toggle').textContent = '📋 预览JSON';
             } else {
-                content.innerHTML = `<div id="ve-json-preview" style="flex:1;padding:24px;overflow:auto;background:#f7fafc;"><pre style="font-size:12px;line-height:1.5;color:#2d3748;font-family:Consolas,Monaco,monospace;white-space:pre-wrap;">${JSON.stringify(wc, null, 2).replace(/</g, '&lt;')}</pre></div>`;
+                content.innerHTML = `<div id="ve-json-preview" style="flex:1;padding:24px;overflow:auto;background:var(--wf-surface-muted);"><pre style="font-size:12px;line-height:1.5;color:var(--wf-text-heading);font-family:Consolas,Monaco,monospace;white-space:pre-wrap;">${JSON.stringify(wc, null, 2).replace(/</g, '&lt;')}</pre></div>`;
                 document.getElementById('ve-json-toggle').textContent = '📋 返回编辑';
             }
         };
@@ -3789,6 +4195,10 @@
             if (savedState.runtimeVariables && typeof savedState.runtimeVariables === 'object') {
                 setRuntimeVariables(savedState.runtimeVariables);
             }
+            // 恢复自动匹配待执行标记
+            if (savedState.autoMatchPending) {
+                setAutoMatchPending(savedState.autoMatchPending);
+            }
             const stepsLength = workflow?.steps?.length || 0;
             const hasUnfinishedSteps = savedState.currentStepIndex < stepsLength;
             const wasRunning = savedState.isRunning || savedState.autoContinue;
@@ -3869,7 +4279,7 @@
         <div class="wf-panel-body" id="panel-body">
             <div class="wf-main">
                 <div class="wf-info-bar">
-                    <div class="wf-name" id="workflow-name-display">📋 ${workflow.name} <span id="workflow-config-version" style="font-size:10px;color:#a0aec0;">v${workflow.version || '1.0.0'}</span></div>
+                    <div class="wf-name" id="workflow-name-display">📋 ${workflow.name} <span id="workflow-config-version" style="font-size:10px;color:var(--wf-text-faint);">v${workflow.version || '1.0.0'}</span></div>
                     <div class="wf-status" id="workflow-status">准备就绪</div>
                 </div>
 
@@ -3945,23 +4355,23 @@
         const valueEditModal = document.createElement('div');
         valueEditModal.id = 'value-edit-modal';
         valueEditModal.className = 'wf-modal';
-        valueEditModal.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;background:rgba(0,0,0,0.4);display:none;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+        valueEditModal.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;background:var(--wf-overlay);display:none;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
         valueEditModal.innerHTML = `
-        <div class="wf-modal-dialog" style="background:white;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.2);padding:20px;min-width:300px;max-width:420px;animation:wfModalFadeIn 0.15s ease-out;">
-            <div style="font-size:15px;font-weight:600;color:#1a202c;margin-bottom:14px;">✏️ 修改值</div>
+        <div class="wf-modal-dialog" style="background:var(--wf-surface);border-radius:var(--wf-radius-xl);box-shadow:0 20px 60px rgba(0,0,0,0.2);padding:20px;min-width:300px;max-width:420px;animation:wfModalFadeIn 0.15s ease-out;">
+            <div style="font-size:15px;font-weight:600;color:var(--wf-text);margin-bottom:14px;">✏️ 修改值</div>
             <div style="margin-bottom:12px;">
-                <label for="value-edit-input" style="display:block;font-size:12px;color:#4a5568;margin-bottom:4px;">新值:</label>
-                <input type="text" id="value-edit-input" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;outline:none;transition:border-color 0.15s;" placeholder="输入新值，数组格式如: [&quot;a&quot;, &quot;b&quot;]">
-                <div id="value-edit-resolved" style="font-size:12px;color:#a0aec0;margin-top:6px;display:none;">
-                    实际值：<span id="value-edit-resolved-value" style="color:#4a5568;font-weight:500;"></span>
+                <label for="value-edit-input" style="display:block;font-size:12px;color:var(--wf-text-secondary);margin-bottom:4px;">新值:</label>
+                <input type="text" id="value-edit-input" style="width:100%;padding:7px 10px;border:1px solid var(--wf-border);border-radius:var(--wf-radius-md);font-size:13px;transition:border-color 0.15s;" placeholder="输入新值，数组格式如: [&quot;a&quot;, &quot;b&quot;]">
+                <div id="value-edit-resolved" style="font-size:12px;color:var(--wf-text-faint);margin-top:6px;display:none;">
+                    实际值：<span id="value-edit-resolved-value" style="color:var(--wf-text-secondary);font-weight:500;"></span>
                 </div>
             </div>
-            <div style="font-size:11px;color:#718096;margin-bottom:14px;line-height:1.4;">
-                💡 提示：select 类型支持数组格式，尝试多个值直到匹配，如 <code style="background:#f7fafc;padding:1px 4px;border-radius:3px;">[&quot;选项1&quot;, &quot;选项2&quot;]</code>；也支持按位置选择：<code style="background:#f7fafc;padding:1px 4px;border-radius:3px;">##1</code> 第1项、<code style="background:#f7fafc;padding:1px 4px;border-radius:3px;">##last</code> 最后一项、<code style="background:#f7fafc;padding:1px 4px;border-radius:3px;">##random</code> 随机
+            <div style="font-size:11px;color:var(--wf-text-muted);margin-bottom:14px;line-height:1.4;">
+                💡 提示：select 类型支持数组格式，尝试多个值直到匹配，如 <code style="background:var(--wf-surface-muted);padding:1px 4px;border-radius:var(--wf-radius-sm);">[&quot;选项1&quot;, &quot;选项2&quot;]</code>；也支持按位置选择：<code style="background:var(--wf-surface-muted);padding:1px 4px;border-radius:var(--wf-radius-sm);">##1</code> 第1项、<code style="background:var(--wf-surface-muted);padding:1px 4px;border-radius:var(--wf-radius-sm);">##last</code> 最后一项、<code style="background:var(--wf-surface-muted);padding:1px 4px;border-radius:var(--wf-radius-sm);">##random</code> 随机
             </div>
             <div style="display:flex;justify-content:flex-end;gap:8px;">
-                <button id="value-edit-cancel" style="padding:6px 14px;border:1px solid #e2e8f0;background:white;border-radius:6px;font-size:12px;cursor:pointer;color:#4a5568;">取消</button>
-                <button id="value-edit-confirm" style="padding:6px 14px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">确定</button>
+                <button id="value-edit-cancel" style="padding:6px 14px;border:1px solid var(--wf-border);background:var(--wf-surface);border-radius:var(--wf-radius-md);font-size:12px;cursor:pointer;color:var(--wf-text-secondary);">取消</button>
+                <button id="value-edit-confirm" style="padding:6px 14px;border:none;background:var(--wf-primary);color:white;border-radius:var(--wf-radius-md);font-size:12px;font-weight:500;cursor:pointer;">确定</button>
             </div>
         </div>
     `;
@@ -4013,12 +4423,12 @@
                 const varName = varRefMatch[1];
                 closeValueEditModal();
                 showConfirm(
-                    `是否修改变量 <code style="background:#f7fafc;padding:1px 5px;border-radius:3px;font-size:13px;">\${${varName}}</code> 的值？` +
+                    `是否修改变量 <code style="background:var(--wf-surface-muted);padding:1px 5px;border-radius:var(--wf-radius-sm);font-size:13px;">\${${varName}}</code> 的值？` +
                     `<div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">` +
-                    `<div style="font-size:13px;color:#4a5568;background:#f7fafc;border-radius:6px;padding:7px 10px;">` +
-                    `<strong style="color:#2d3748;">仅改当前：</strong>只覆盖此动作，不影响其他引用该变量的动作</div>` +
-                    `<div style="font-size:13px;color:#4a5568;background:#f7fafc;border-radius:6px;padding:7px 10px;">` +
-                    `<strong style="color:#2d3748;">修改变量：</strong>同时影响所有引用 \${${varName}} 的动作</div>` +
+                    `<div style="font-size:13px;color:var(--wf-text-secondary);background:var(--wf-surface-muted);border-radius:var(--wf-radius-md);padding:7px 10px;">` +
+                    `<strong style="color:var(--wf-text-heading);">仅改当前：</strong>只覆盖此动作，不影响其他引用该变量的动作</div>` +
+                    `<div style="font-size:13px;color:var(--wf-text-secondary);background:var(--wf-surface-muted);border-radius:var(--wf-radius-md);padding:7px 10px;">` +
+                    `<strong style="color:var(--wf-text-heading);">修改变量：</strong>同时影响所有引用 \${${varName}} 的动作</div>` +
                     `</div>`,
                     {
                         title: '修改方式',
@@ -4052,18 +4462,72 @@
             }
         }
 
+        // 创建选择器编辑模态框
+        const selectorEditModal = document.createElement('div');
+        selectorEditModal.id = 'selector-edit-modal';
+        selectorEditModal.className = 'wf-modal';
+        selectorEditModal.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;background:var(--wf-overlay);display:none;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+        selectorEditModal.innerHTML = `
+        <div class="wf-modal-dialog" style="background:var(--wf-surface);border-radius:var(--wf-radius-xl);box-shadow:0 20px 60px rgba(0,0,0,0.2);padding:20px;min-width:320px;max-width:480px;animation:wfModalFadeIn 0.15s ease-out;">
+            <div style="font-size:15px;font-weight:600;color:var(--wf-text);margin-bottom:14px;">🎯 修改选择器</div>
+            <div style="margin-bottom:12px;">
+                <label for="selector-edit-input" style="display:block;font-size:12px;color:var(--wf-text-secondary);margin-bottom:4px;">选择器:</label>
+                <input type="text" id="selector-edit-input" style="width:100%;padding:7px 10px;border:1px solid var(--wf-border);border-radius:var(--wf-radius-md);font-size:13px;font-family:Consolas,monospace;transition:border-color 0.15s;" placeholder="CSS 选择器 或 XPath（以 / 或 ( 开头）">
+                <div id="selector-edit-resolved" style="font-size:12px;color:var(--wf-text-faint);margin-top:6px;display:none;">
+                    解析值：<span id="selector-edit-resolved-value" style="color:var(--wf-text-secondary);font-weight:500;"></span>
+                </div>
+            </div>
+            <div style="font-size:11px;color:var(--wf-text-muted);margin-bottom:14px;line-height:1.4;">
+                💡 提示：支持 CSS 选择器或 XPath；含 <code style="background:var(--wf-surface-muted);padding:1px 4px;border-radius:var(--wf-radius-sm);">\${变量}</code> 时显示实际解析值。此修改为运行时覆盖，重置工作流后恢复原配置。
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;">
+                <button id="selector-edit-cancel" style="padding:6px 14px;border:1px solid var(--wf-border);background:var(--wf-surface);border-radius:var(--wf-radius-md);font-size:12px;cursor:pointer;color:var(--wf-text-secondary);">取消</button>
+                <button id="selector-edit-confirm" style="padding:6px 14px;border:none;background:var(--wf-primary);color:white;border-radius:var(--wf-radius-md);font-size:12px;font-weight:500;cursor:pointer;">确定</button>
+            </div>
+        </div>
+    `;
+        document.body.appendChild(selectorEditModal);
+
+        selectorEditModal.onclick = (e) => { if (e.target === selectorEditModal) closeSelectorEditModal(); };
+        selectorEditModal.querySelector('#selector-edit-cancel').onclick = closeSelectorEditModal;
+        selectorEditModal.querySelector('#selector-edit-confirm').onclick = confirmSelectorEdit;
+
+        function closeSelectorEditModal() {
+            selectorEditModal.style.display = 'none';
+            setCurrentSelectorEditAction(null);
+        }
+
+        function confirmSelectorEdit() {
+            if (!currentSelectorEditAction) return;
+            const input = document.getElementById('selector-edit-input');
+            const newValue = input.value.trim();
+            const { stepIndex, actionIndex } = currentSelectorEditAction;
+            const action = workflow.steps[stepIndex].actions[actionIndex];
+
+            if (!newValue) {
+                closeSelectorEditModal();
+                return;
+            }
+
+            setActionOverride(activeWorkflowId, stepIndex, actionIndex, 'selector', newValue);
+            saveState();
+            updateUI();
+            addLog(`已修改选择器(覆盖): ${action.description || action.type} -> ${newValue}`, 'info');
+            closeSelectorEditModal();
+        }
+
         // 创建说明模态框
         const descriptionModal = document.createElement('div');
         descriptionModal.id = 'description-modal';
         descriptionModal.className = 'wf-modal';
-        descriptionModal.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;background:rgba(0,0,0,0.4);display:none;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+        descriptionModal.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;background:var(--wf-overlay);display:none;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
         descriptionModal.innerHTML = `
-        <div class="wf-modal-dialog" style="background:white;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.2);padding:24px;min-width:360px;max-width:520px;max-height:70vh;display:flex;flex-direction:column;animation:wfModalFadeIn 0.15s ease-out;">
+        <div class="wf-modal-dialog" style="background:var(--wf-surface);border-radius:var(--wf-radius-xl);box-shadow:0 20px 60px rgba(0,0,0,0.2);padding:24px;min-width:360px;max-width:520px;max-height:70vh;display:flex;flex-direction:column;animation:wfModalFadeIn 0.15s ease-out;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-                <div style="font-size:15px;font-weight:600;color:#1a202c;">📖 使用说明</div>
-                <button id="description-close" style="width:24px;height:24px;border:none;background:#f7fafc;border-radius:6px;cursor:pointer;font-size:14px;color:#718096;display:flex;align-items:center;justify-content:center;">×</button>
+                <div style="font-size:15px;font-weight:600;color:var(--wf-text);">📖 使用说明</div>
+                <button id="description-close" style="width:24px;height:24px;border:none;background:var(--wf-surface-muted);border-radius:var(--wf-radius-md);cursor:pointer;font-size:14px;color:var(--wf-text-muted);display:flex;align-items:center;justify-content:center;">×</button>
             </div>
-            <div id="description-content" style="flex:1;overflow-y:auto;font-size:13px;line-height:1.6;color:#4a5568;"></div>
+            <div id="description-content" style="flex:1;overflow-y:auto;font-size:13px;line-height:1.6;color:var(--wf-text-secondary);"></div>
         </div>
     `;
         document.body.appendChild(descriptionModal);
@@ -4090,30 +4554,30 @@
         const updateModal = document.createElement('div');
         updateModal.id = 'update-modal';
         updateModal.className = 'wf-modal';
-        updateModal.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100001;background:rgba(0,0,0,0.4);align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+        updateModal.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100001;background:var(--wf-overlay);align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
         updateModal.innerHTML = `
-        <div class="wf-modal-dialog" style="background:white;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.2);padding:24px;min-width:500px;max-width:720px;max-height:80vh;display:flex;flex-direction:column;animation:wfModalFadeIn 0.15s ease-out;">
+        <div class="wf-modal-dialog" style="background:var(--wf-surface);border-radius:var(--wf-radius-xl);box-shadow:0 20px 60px rgba(0,0,0,0.2);padding:24px;min-width:500px;max-width:720px;max-height:80vh;display:flex;flex-direction:column;animation:wfModalFadeIn 0.15s ease-out;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                <div style="font-size:16px;font-weight:600;color:#1a202c;">🔄 检查更新</div>
-                <button id="update-modal-close" style="width:28px;height:28px;border:none;background:#f7fafc;border-radius:6px;cursor:pointer;font-size:16px;color:#718096;display:flex;align-items:center;justify-content:center;">×</button>
+                <div style="font-size:16px;font-weight:600;color:var(--wf-text);">🔄 检查更新</div>
+                <button id="update-modal-close" style="width:28px;height:28px;border:none;background:var(--wf-surface-muted);border-radius:var(--wf-radius-md);cursor:pointer;font-size:16px;color:var(--wf-text-muted);display:flex;align-items:center;justify-content:center;">×</button>
             </div>
-            <div style="display:flex;border-bottom:1px solid #e2e8f0;margin-bottom:16px;">
-                <button class="update-tab active" data-tab="script" style="flex:1;padding:10px;border:none;background:transparent;font-size:14px;font-weight:500;color:#4299e1;border-bottom:2px solid #4299e1;cursor:pointer;">脚本更新</button>
-                <button class="update-tab" data-tab="workflow" style="flex:1;padding:10px;border:none;background:transparent;font-size:14px;font-weight:500;color:#718096;border-bottom:2px solid transparent;cursor:pointer;">工作流更新</button>
+            <div style="display:flex;border-bottom:1px solid var(--wf-border);margin-bottom:16px;">
+                <button class="update-tab active" data-tab="script" style="flex:1;padding:10px;border:none;background:transparent;font-size:14px;font-weight:500;color:var(--wf-primary);border-bottom:2px solid var(--wf-primary);cursor:pointer;">脚本更新</button>
+                <button class="update-tab" data-tab="workflow" style="flex:1;padding:10px;border:none;background:transparent;font-size:14px;font-weight:500;color:var(--wf-text-muted);border-bottom:2px solid transparent;cursor:pointer;">工作流更新</button>
             </div>
             <div id="update-tab-script" class="update-tab-content" style="flex:1;overflow-y:auto;">
-                <div id="script-update-status" style="text-align:center;padding:20px;color:#718096;">点击下方按钮检查更新</div>
+                <div id="script-update-status" style="text-align:center;padding:20px;color:var(--wf-text-muted);">点击下方按钮检查更新</div>
                 <div style="display:flex;justify-content:center;gap:10px;margin-top:16px;">
-                    <button id="check-script-update-btn" style="padding:8px 20px;border:none;background:#4299e1;color:white;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">检查更新</button>
+                    <button id="check-script-update-btn" style="padding:8px 20px;border:none;background:var(--wf-primary);color:white;border-radius:var(--wf-radius-md);font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">检查更新</button>
                 </div>
             </div>
             <div id="update-tab-workflow" class="update-tab-content" style="flex:1;overflow-y:auto;display:none;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:0 8px;">
-                    <span style="font-size:13px;color:#718096;">云端工作流列表</span>
-                    <button id="refresh-workflow-list-btn" style="padding:6px 16px;border:none;background:#4299e1;color:white;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;transition:background 0.15s;">⟳ 刷新</button>
+                    <span style="font-size:13px;color:var(--wf-text-muted);">云端工作流列表</span>
+                    <button id="refresh-workflow-list-btn" style="padding:6px 16px;border:none;background:var(--wf-primary);color:white;border-radius:var(--wf-radius-md);font-size:12px;font-weight:500;cursor:pointer;transition:background 0.15s;">⟳ 刷新</button>
                 </div>
                 <div id="workflow-update-status" style="padding:8px;">
-                    <div style="text-align:center;padding:40px 20px;color:#718096;">点击「刷新」按钮获取云端工作流</div>
+                    <div style="text-align:center;padding:40px 20px;color:var(--wf-text-muted);">点击「刷新」按钮获取云端工作流</div>
                 </div>
             </div>
         </div>
@@ -4122,9 +4586,9 @@
         // Tab 切换样式
         const tabStyles = document.createElement('style');
         tabStyles.textContent = `
-        .update-tab:hover { color: #4299e1 !important; }
-        .update-tab.active { color: #4299e1 !important; border-bottom-color: #4299e1 !important; }
-        .update-tab:not(.active) { color: #718096 !important; border-bottom-color: transparent !important; }
+        .update-tab:hover { color: var(--wf-primary) !important; }
+        .update-tab.active { color: var(--wf-primary) !important; border-bottom-color: var(--wf-primary) !important; }
+        .update-tab:not(.active) { color: var(--wf-text-muted) !important; border-bottom-color: transparent !important; }
     `;
         document.head.appendChild(tabStyles);
 
@@ -4156,14 +4620,14 @@
         function showUpdateModal() {
             updateModal.style.display = 'flex';
             // 重置状态
-            document.getElementById('script-update-status').innerHTML = '<div style="text-align:center;padding:20px;color:#718096;">点击下方按钮检查更新</div>';
-            document.getElementById('workflow-update-status').innerHTML = '<div style="text-align:center;padding:40px 20px;color:#718096;">点击「刷新」按钮获取云端工作流</div>';
+            document.getElementById('script-update-status').innerHTML = '<div style="text-align:center;padding:20px;color:var(--wf-text-muted);">点击下方按钮检查更新</div>';
+            document.getElementById('workflow-update-status').innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--wf-text-muted);">点击「刷新」按钮获取云端工作流</div>';
         }
 
         // 检查脚本更新
         async function checkScriptUpdate() {
             const statusEl = document.getElementById('script-update-status');
-            statusEl.innerHTML = '<div style="text-align:center;padding:20px;color:#4299e1;">⟳ 正在检查更新...</div>';
+            statusEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--wf-primary);">⟳ 正在检查更新...</div>';
 
             try {
                 const result = await manualCheckUpdate();
@@ -4171,22 +4635,22 @@
 
                 if (result.hasUpdate) {
                     statusEl.innerHTML = `
-                    <div style="padding:16px;background:#f0fff4;border-radius:8px;border:1px solid #9ae6b4;margin-bottom:16px;">
-                        <div style="font-size:14px;font-weight:600;color:#22543d;margin-bottom:8px;">✓ 发现新版本！</div>
-                        <div style="font-size:13px;color:#2f855a;">
+                    <div style="padding:16px;background:var(--wf-success-light);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-success-border);margin-bottom:16px;">
+                        <div style="font-size:14px;font-weight:600;color:var(--wf-success-text);margin-bottom:8px;">✓ 发现新版本！</div>
+                        <div style="font-size:13px;color:var(--wf-success);">
                             <div>当前版本：<strong>v${currentVersion}</strong></div>
                             <div>最新版本：<strong>v${result.latest}</strong></div>
                         </div>
                     </div>
 
-                    <div style="padding:12px;background:#ebf8ff;border-radius:8px;border:1px solid #90cdf4;margin-bottom:16px;">
-                        <div style="font-size:13px;font-weight:600;color:#2c5282;margin-bottom:6px;">📝 更新内容：</div>
-                        ${result.updatedAt ? `<div style="font-size:12px;color:#38a169;margin-bottom:6px;">更新于 ${result.updatedAt}</div>` : ''}
-                        <div style="font-size:13px;color:#2a4365;white-space:pre-line;">${result.changelog || '详见更新日志'}</div>
+                    <div style="padding:12px;background:var(--wf-primary-light);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-primary-border);margin-bottom:16px;">
+                        <div style="font-size:13px;font-weight:600;color:var(--wf-primary-darker);margin-bottom:6px;">📝 更新内容：</div>
+                        ${result.updatedAt ? `<div style="font-size:12px;color:var(--wf-success);margin-bottom:6px;">更新于 ${result.updatedAt}</div>` : ''}
+                        <div style="font-size:13px;color:var(--wf-primary-text);white-space:pre-line;">${result.changelog || '详见更新日志'}</div>
                     </div>
 
                     <div style="display:flex;justify-content:center;gap:10px;">
-                        <button id="goto-update-btn" style="padding:8px 20px;border:none;background:#48bb78;color:white;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">立即更新</button>
+                        <button id="goto-update-btn" style="padding:8px 20px;border:none;background:var(--wf-success-accent);color:white;border-radius:var(--wf-radius-md);font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">立即更新</button>
                     </div>
                 `;
 
@@ -4194,18 +4658,18 @@
                     const handleGotoUpdate = () => {
                         // 显示确认对话框（含更新步骤，步骤1进行中）
                         statusEl.innerHTML = `
-                        <div style="padding:20px;background:#fffaf0;border-radius:12px;border:2px solid #f6ad55;">
-                            <div style="font-size:15px;font-weight:600;color:#9c4221;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                        <div style="padding:20px;background:var(--wf-warning-light);border-radius:var(--wf-radius-xl);border:2px solid var(--wf-warning-border);">
+                            <div style="font-size:15px;font-weight:600;color:var(--wf-warning-hover);margin-bottom:12px;display:flex;align-items:center;gap:8px;">
                                 <span style="font-size:18px;">⚡</span>
                                 <span>确认更新脚本？</span>
                             </div>
-                            <div style="font-size:13px;color:#9c4221;margin-bottom:16px;line-height:1.6;">
+                            <div style="font-size:13px;color:var(--wf-warning-hover);margin-bottom:16px;line-height:1.6;">
                                 点击「确认」后将自动跳转到油猴管理界面
                             </div>
                             ${renderUpdateSteps(1)}
                             <div style="display:flex;justify-content:center;gap:12px;">
-                                <button id="cancel-update-btn" style="padding:8px 20px;border:1px solid #cbd5e0;background:#fff;color:#4a5568;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;transition:all 0.2s;">取消</button>
-                                <button id="confirm-update-btn" style="padding:8px 20px;border:none;background:#ed8936;color:white;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 4px rgba(237,137,54,0.3);">确认</button>
+                                <button id="cancel-update-btn" style="padding:8px 20px;border:1px solid var(--wf-border-strong);background:var(--wf-surface);color:var(--wf-text-secondary);border-radius:var(--wf-radius-lg);font-size:13px;font-weight:500;cursor:pointer;transition:all 0.2s;">取消</button>
+                                <button id="confirm-update-btn" style="padding:8px 20px;border:none;background:var(--wf-warning);color:white;border-radius:var(--wf-radius-lg);font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 4px rgba(237,137,54,0.3);">确认</button>
                             </div>
                         </div>
                     `;
@@ -4234,9 +4698,9 @@
                     window.wfHasUpdate = false;
 
                     statusEl.innerHTML = `
-                    <div style="padding:20px;background:#f7fafc;border-radius:8px;border:1px solid #e2e8f0;">
-                        <div style="font-size:14px;font-weight:600;color:#2d3748;margin-bottom:8px;">✓ 已是最新版本</div>
-                        <div style="font-size:13px;color:#4a5568;">
+                    <div style="padding:20px;background:var(--wf-surface-muted);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-border);">
+                        <div style="font-size:14px;font-weight:600;color:var(--wf-text-heading);margin-bottom:8px;">✓ 已是最新版本</div>
+                        <div style="font-size:13px;color:var(--wf-text-secondary);">
                             当前版本 <strong>v${currentVersion}</strong>
                         </div>
                     </div>
@@ -4244,9 +4708,9 @@
                 }
             } catch (e) {
                 statusEl.innerHTML = `
-                <div style="padding:20px;background:#fff5f5;border-radius:8px;border:1px solid #fc8181;">
-                    <div style="font-size:14px;font-weight:600;color:#742a2a;margin-bottom:8px;">✗ 检查失败</div>
-                    <div style="font-size:13px;color:#742a2a;">${e.message}</div>
+                <div style="padding:20px;background:var(--wf-error-light);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-error-accent);">
+                    <div style="font-size:14px;font-weight:600;color:var(--wf-error-text);margin-bottom:8px;">✗ 检查失败</div>
+                    <div style="font-size:13px;color:var(--wf-error-text);">${e.message}</div>
                 </div>
             `;
             }
@@ -4257,7 +4721,7 @@
         function renderUpdateSteps(currentStep) {
             const steps = [
                 { num: 1, text: '点击立即更新自动跳转到油猴管理界面' },
-                { num: 2, text: '在新标签页中，点击<span style="background:#fed7e2;color:#c53030;padding:2px 8px;border-radius:4px;font-weight:600;margin:0 4px;">「Override/重新安装」</span>按钮更新脚本' },
+                { num: 2, text: '在新标签页中，点击<span style="background:var(--wf-error-soft);color:var(--wf-error);padding:2px 8px;border-radius:var(--wf-radius-sm);font-weight:600;margin:0 4px;">「Override/重新安装」</span>按钮更新脚本' },
                 { num: 3, text: '回到此页面，点击「刷新页面」按钮' }
             ];
 
@@ -4265,20 +4729,20 @@
                 let bg, borderColor, iconBg, iconContent, textColor;
                 if (step.num < currentStep) {
                     // 已完成
-                    bg = '#f0fff4'; borderColor = '#9ae6b4'; iconBg = '#48bb78';
-                    iconContent = '✓'; textColor = '#2f855a';
+                    bg = 'var(--wf-success-light)'; borderColor = 'var(--wf-success-border)'; iconBg = 'var(--wf-success-accent)';
+                    iconContent = '✓'; textColor = 'var(--wf-success)';
                 } else if (step.num === currentStep) {
                     // 当前进行中
-                    bg = '#ebf8ff'; borderColor = '#90cdf4'; iconBg = '#4299e1';
-                    iconContent = step.num; textColor = '#2c5282';
+                    bg = 'var(--wf-primary-light)'; borderColor = 'var(--wf-primary-border)'; iconBg = 'var(--wf-primary)';
+                    iconContent = step.num; textColor = 'var(--wf-primary-darker)';
                 } else {
                     // 未开始
-                    bg = '#f7fafc'; borderColor = '#e2e8f0'; iconBg = '#cbd5e0';
-                    iconContent = step.num; textColor = '#a0aec0';
+                    bg = 'var(--wf-surface-muted)'; borderColor = 'var(--wf-border)'; iconBg = 'var(--wf-border-strong)';
+                    iconContent = step.num; textColor = 'var(--wf-text-faint)';
                 }
                 return `
-                <div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:${bg};border-radius:8px;border:1px solid ${borderColor};">
-                    <div style="flex-shrink:0;width:24px;height:24px;background:${iconBg};color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;">${iconContent}</div>
+                <div style="display:flex;align-items:flex-start;gap:10px;padding:12px;background:${bg};border-radius:var(--wf-radius-lg);border:1px solid ${borderColor};">
+                    <div style="flex-shrink:0;width:24px;height:24px;background:${iconBg};color:white;border-radius:var(--wf-radius-circle);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;">${iconContent}</div>
                     <div style="flex:1;font-size:13px;color:${textColor};line-height:1.5;">${step.text}</div>
                 </div>
             `;
@@ -4286,7 +4750,7 @@
 
             return `
             <div style="margin-bottom:16px;">
-                <div style="font-size:14px;font-weight:600;color:#2d3748;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                <div style="font-size:14px;font-weight:600;color:var(--wf-text-heading);margin-bottom:12px;display:flex;align-items:center;gap:8px;">
                     <span style="font-size:16px;">📋</span>
                     <span>更新步骤</span>
                 </div>
@@ -4302,7 +4766,7 @@
             container.innerHTML = `
             <div style="padding:20px;">
                 ${renderUpdateSteps(2)}
-                <button id="refresh-page-btn" style="width:100%;padding:10px 24px;border:none;background:#4299e1;color:white;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 4px rgba(66,153,225,0.3);">
+                <button id="refresh-page-btn" style="width:100%;padding:10px 24px;border:none;background:var(--wf-primary);color:white;border-radius:var(--wf-radius-lg);font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 4px rgba(66,153,225,0.3);">
                     🔄 刷新页面
                 </button>
             </div>
@@ -4315,16 +4779,16 @@
         // 加载云端工作流列表
         async function loadRemoteWorkflows() {
             const statusEl = document.getElementById('workflow-update-status');
-            statusEl.innerHTML = '<div style="text-align:center;padding:20px;color:#4299e1;">⟳ 正在获取云端工作流...</div>';
+            statusEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--wf-primary);">⟳ 正在获取云端工作流...</div>';
 
             try {
                 const result = await getRemoteWorkflows();
 
                 if (result.error) {
                     statusEl.innerHTML = `
-                    <div style="padding:20px;background:#fff5f5;border-radius:8px;border:1px solid #fc8181;">
-                        <div style="font-size:14px;font-weight:600;color:#742a2a;margin-bottom:8px;">✗ 获取失败</div>
-                        <div style="font-size:13px;color:#742a2a;">${result.error}</div>
+                    <div style="padding:20px;background:var(--wf-error-light);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-error-accent);">
+                        <div style="font-size:14px;font-weight:600;color:var(--wf-error-text);margin-bottom:8px;">✗ 获取失败</div>
+                        <div style="font-size:13px;color:var(--wf-error-text);">${result.error}</div>
                     </div>
                 `;
                     return;
@@ -4332,8 +4796,8 @@
 
                 if (!result.workflows || result.workflows.length === 0) {
                     statusEl.innerHTML = `
-                    <div style="padding:20px;background:#f7fafc;border-radius:8px;border:1px solid #e2e8f0;">
-                        <div style="font-size:14px;color:#4a5568;">暂无云端工作流</div>
+                    <div style="padding:20px;background:var(--wf-surface-muted);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-border);">
+                        <div style="font-size:14px;color:var(--wf-text-secondary);">暂无云端工作流</div>
                     </div>
                 `;
                     return;
@@ -4341,24 +4805,25 @@
 
                 // 渲染工作流列表
                 const workflowListHtml = result.workflows.map(wf => {
+                    // statusColor 用于 ${statusColor}20 / ${statusColor}40 透明度拼接，必须为 hex 字面量（var() 无法拼接后缀）
                     const statusColor = wf.hasUpdate ? '#48bb78' : (wf.isInstalled ? '#4299e1' : '#718096');
                     const statusText = wf.hasUpdate ? '有更新' : (wf.isInstalled ? '已安装' : '未安装');
                     const buttonText = wf.hasUpdate ? '更新' : (wf.isInstalled ? '重新安装' : '安装');
-                    const buttonColor = wf.hasUpdate ? '#48bb78' : '#4299e1';
-                    const rowStyle = wf.hasUpdate ? 'background:#f0fff4;border-color:#9ae6b4;' : '';
+                    const buttonColor = wf.hasUpdate ? 'var(--wf-success-accent)' : 'var(--wf-primary)';
+                    const rowStyle = wf.hasUpdate ? 'background:var(--wf-success-light);border-color:var(--wf-success-border);' : '';
 
                     return `
-                    <div style="display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:8px;border-radius:8px;border:1px solid #e2e8f0;${rowStyle}">
+                    <div style="display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:8px;border-radius:var(--wf-radius-lg);border:1px solid var(--wf-border);${rowStyle}">
                         <div style="flex:1;min-width:0;">
-                            <div style="font-size:14px;font-weight:600;color:#1a202c;margin-bottom:4px;">${escapeHtml(wf.name)}</div>
-                            <div style="font-size:12px;color:#718096;">
-                                云端 v${wf.version}${wf.localVersion ? ` | 本地 v${wf.localVersion}` : ''}${wf.updatedAt ? `<span style="color:#38a169;"> | 更新于 ${escapeHtml(wf.updatedAt)}</span>` : ''}
+                            <div style="font-size:14px;font-weight:600;color:var(--wf-text);margin-bottom:4px;">${escapeHtml(wf.name)}</div>
+                            <div style="font-size:12px;color:var(--wf-text-muted);">
+                                云端 v${wf.version}${wf.localVersion ? ` | 本地 v${wf.localVersion}` : ''}${wf.updatedAt ? `<span style="color:var(--wf-success);"> | 更新于 ${escapeHtml(wf.updatedAt)}</span>` : ''}
                             </div>
-                            ${wf.changelog ? `<div style="font-size:12px;color:#4a5568;margin-top:4px;white-space:pre-line;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(wf.changelog)}</div>` : ''}
+                            ${wf.changelog ? `<div style="font-size:12px;color:var(--wf-text-secondary);margin-top:4px;white-space:pre-line;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(wf.changelog)}</div>` : ''}
                         </div>
                         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
-                            <span style="font-size:12px;padding:2px 8px;border-radius:4px;background:${statusColor}20;color:${statusColor};border:1px solid ${statusColor}40;">${statusText}</span>
-                            <button class="download-workflow-btn" data-name="${escapeHtml(wf.name)}" style="padding:6px 14px;border:none;background:${buttonColor};color:white;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;transition:background 0.15s;white-space:nowrap;">${buttonText}</button>
+                            <span style="font-size:12px;padding:2px 8px;border-radius:var(--wf-radius-sm);background:${statusColor}20;color:${statusColor};border:1px solid ${statusColor}40;">${statusText}</span>
+                            <button class="download-workflow-btn" data-name="${escapeHtml(wf.name)}" style="padding:6px 14px;border:none;background:${buttonColor};color:white;border-radius:var(--wf-radius-md);font-size:12px;font-weight:500;cursor:pointer;transition:background 0.15s;white-space:nowrap;">${buttonText}</button>
                         </div>
                     </div>
                 `;
@@ -4452,9 +4917,9 @@
 
             } catch (e) {
                 statusEl.innerHTML = `
-                <div style="padding:20px;background:#fff5f5;border-radius:8px;border:1px solid #fc8181;">
-                    <div style="font-size:14px;font-weight:600;color:#742a2a;margin-bottom:8px;">✗ 加载失败</div>
-                    <div style="font-size:13px;color:#742a2a;">${e.message}</div>
+                <div style="padding:20px;background:var(--wf-error-light);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-error-accent);">
+                    <div style="font-size:14px;font-weight:600;color:var(--wf-error-text);margin-bottom:8px;">✗ 加载失败</div>
+                    <div style="font-size:13px;color:var(--wf-error-text);">${e.message}</div>
                 </div>
             `;
             }
@@ -4655,16 +5120,16 @@
             right: 4px;
             width: 8px;
             height: 8px;
-            background: #48bb78;
-            border-radius: 50%;
+            background: var(--wf-success-accent);
+            border-radius:var(--wf-radius-circle);
             border: 2px solid white;
         }
         .wf-update-badge {
-            background: #e53e3e;
+            background: var(--wf-error);
             color: white;
             font-size: 10px;
             padding: 2px 6px;
-            border-radius: 10px;
+            border-radius:var(--wf-radius-pill);
             margin-left: 6px;
             font-weight: 500;
         }
@@ -4724,11 +5189,11 @@
                 if (messageEl) {
                     if (pendingAction.error) {
                         messageEl.textContent = `⚠ 动作失败: ${action.description || action.type}`;
-                        messageEl.style.color = '#e53e3e';
+                        messageEl.style.color = 'var(--wf-error)';
                         if (continueBtn) continueBtn.textContent = '✓ 已处理，继续';
                     } else {
                         messageEl.textContent = `⏸ 请手动完成: ${action.description || action.type}`;
-                        messageEl.style.color = '#d97706';
+                        messageEl.style.color = 'var(--wf-warning)';
                         if (continueBtn) continueBtn.textContent = '✓ 完成，继续';
                     }
                 }
@@ -4774,8 +5239,10 @@
                     const actionType = action.type || 'unknown';
                     const actionDesc = action.description || actionType;
                     let actionMeta = '';
-                    if (action.selector) {
-                        actionMeta = escapeHtml(action.selector);
+                    const effectiveSelector = getEffectiveActionSelector(stepIndex, actionIndex);
+                    if (effectiveSelector) {
+                        const hasOverride = effectiveSelector !== action.selector;
+                        actionMeta = `<span class="wf-action-selector-edit" data-step="${stepIndex}" data-action="${actionIndex}" title="点击修改选择器${hasOverride ? '（已覆盖）' : ''}" style="cursor:pointer;">${escapeHtml(effectiveSelector)}${hasOverride ? ' <span style="color:var(--wf-primary);">●</span>' : ''}</span>`;
                     } else if (actionType === 'wait') {
                         actionMeta = `${action.ms || 1000}ms`;
                     } else if (actionType === 'urlReplace' && action.find) {
@@ -4802,15 +5269,18 @@
                     const runtimeWaitUser = hasWaitUser ? getEffectiveActionWaitUser(stepIndex, actionIndex) : false;
                     let waitToggleHtml = '';
                     if (hasWaitUser) {
-                        waitToggleHtml = `<div class="wf-toggle toggle-manual ${runtimeWaitUser ? 'active' : ''}" data-wait-step="${stepIndex}" data-wait-action="${actionIndex}" title="点击切换手动/自动">
-                        <span class="toggle-text">是否手动</span>
-                    </div>`;
+                        waitToggleHtml = `<div class="wf-toggle wf-toggle-manual ${runtimeWaitUser ? 'active' : ''}" data-wait-step="${stepIndex}" data-wait-action="${actionIndex}" title="${runtimeWaitUser ? '手动模式：点击切换为自动' : '自动模式：点击切换为手动'}">🖐</div>`;
+                    }
+
+                    // 缓存开关 - 仅上传动作（默认启用缓存；点亮=缓存已启用，关闭时暗淡，参考手动开关样式）
+                    let cacheToggleHtml = '';
+                    if (actionType === 'upload') {
+                        const cacheEnabled = getEffectiveActionCache(stepIndex, actionIndex);
+                        cacheToggleHtml = `<div class="wf-toggle wf-toggle-cache ${cacheEnabled ? 'active' : ''}" data-cache-step="${stepIndex}" data-cache-action="${actionIndex}" title="${cacheEnabled ? '缓存已启用：点击禁用（强制重新拉取云端文件）' : '缓存已禁用：点击启用缓存'}">🗃️</div>`;
                     }
 
                     // Bypass toggle - 启用开关
-                    const bypassToggleHtml = `<div class="wf-toggle toggle-enable ${actionBypassed ? '' : 'active'}" data-bypass-step="${stepIndex}" data-bypass-action="${actionIndex}" title="点击切换启用/绕过">
-                    <span class="toggle-text">是否启用</span>
-                </div>`;
+                    const bypassToggleHtml = `<div class="wf-toggle wf-toggle-enable ${actionBypassed ? '' : 'active'}" data-bypass-step="${stepIndex}" data-bypass-action="${actionIndex}" title="${actionBypassed ? '已禁用：点击启用' : '已启用：点击禁用'}"></div>`;
 
                     // Value edit button
                     let valueEditHtml = '';
@@ -4842,8 +5312,8 @@
                     if (isCondition) {
                         const alwaysTrue = action.condition?.type === 'alwaysTrue';
                         const alwaysFalse = action.condition?.type === 'alwaysFalse';
-                        const trueConnector = !alwaysFalse ? `<div class="wf-connector wf-connector-true" data-branch="true" data-step-idx="${stepIndex}" data-action-idx="${actionIndex}" style="position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:12px;height:12px;background:#48bb78;border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.15);z-index:10;" title="为真跳转"></div>` : '';
-                        const falseConnector = !alwaysTrue ? `<div class="wf-connector wf-connector-false" data-branch="false" data-step-idx="${stepIndex}" data-action-idx="${actionIndex}" style="position:absolute;right:-8px;top:50%;transform:translateY(-50%);width:12px;height:12px;background:#e53e3e;border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.15);z-index:10;" title="为假跳转"></div>` : '';
+                        const trueConnector = !alwaysFalse ? `<div class="wf-connector wf-connector-true" data-branch="true" data-step-idx="${stepIndex}" data-action-idx="${actionIndex}" style="position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:12px;height:12px;background:var(--wf-success-accent);border:2px solid white;border-radius:var(--wf-radius-circle);box-shadow:0 2px 4px rgba(0,0,0,0.15);z-index:10;" title="为真跳转"></div>` : '';
+                        const falseConnector = !alwaysTrue ? `<div class="wf-connector wf-connector-false" data-branch="false" data-step-idx="${stepIndex}" data-action-idx="${actionIndex}" style="position:absolute;right:-8px;top:50%;transform:translateY(-50%);width:12px;height:12px;background:var(--wf-error);border:2px solid white;border-radius:var(--wf-radius-circle);box-shadow:0 2px 4px rgba(0,0,0,0.15);z-index:10;" title="为假跳转"></div>` : '';
                         connectorHtml = trueConnector + falseConnector;
                     }
 
@@ -4857,7 +5327,7 @@
                             </div>
                             ${actionMeta ? `<div class="wf-action-meta">${actionMeta}</div>` : ''}
                         </div>
-                        ${highlightHtml}${valueEditHtml}${waitToggleHtml}${bypassToggleHtml}
+                        ${highlightHtml}${valueEditHtml}${waitToggleHtml}${cacheToggleHtml}${bypassToggleHtml}
                         ${connectorHtml}
                     </div>
                 `;
@@ -4870,9 +5340,7 @@
                         <span class="wf-step-toggle">▼</span>
                         <span class="wf-step-name">${step.name}</span>
                         <div class="wf-step-controls">
-                            <div class="wf-toggle toggle-enable ${stepBypassed ? '' : 'active'} bypass-step-toggle" data-bypass-step="${stepIndex}" title="点击切换启用/绕过">
-                                <span class="toggle-text">是否启用</span>
-                            </div>
+                            <div class="wf-toggle wf-toggle-enable ${stepBypassed ? '' : 'active'} bypass-step-toggle" data-bypass-step="${stepIndex}" title="${stepBypassed ? '已禁用：点击启用' : '已启用：点击禁用'}"></div>
                             <button class="wf-step-ctrl-btn step-jump-btn" data-step="${stepIndex}" title="跳转">📍</button>
                             <button class="wf-step-ctrl-btn step-exec-btn" data-step="${stepIndex}" title="执行">▶</button>
                         </div>
@@ -4920,9 +5388,11 @@
             stepList.querySelectorAll('.action-highlight-btn').forEach(btn => {
                 btn.onclick = async (e) => {
                     e.stopPropagation();
-                    const action = workflow.steps[parseInt(btn.dataset.step)].actions[parseInt(btn.dataset.action)];
+                    const stepIndex = parseInt(btn.dataset.step);
+                    const actionIndex = parseInt(btn.dataset.action);
                     try {
-                        await actionExecutors.highlight({ selector: action.selector, duration: 4000 }, workflow.variables);
+                        const selector = getEffectiveActionSelector(stepIndex, actionIndex);
+                        await actionExecutors.highlight({ selector, duration: 4000 }, workflow.variables);
                     } catch (err) {
                         addLog(`✗ 高亮失败: ${err.message}`, 'error');
                     }
@@ -4930,7 +5400,7 @@
             });
 
             // waitUserAction toggle - 手动开关
-            stepList.querySelectorAll('.wf-toggle.toggle-manual[data-wait-step]').forEach(toggle => {
+            stepList.querySelectorAll('.wf-toggle.wf-toggle-manual[data-wait-step]').forEach(toggle => {
                 toggle.onclick = (e) => {
                     e.stopPropagation();
                     const stepIndex = parseInt(toggle.dataset.waitStep);
@@ -4942,6 +5412,22 @@
                     toggle.classList.toggle('active', newVal);
                     saveState();
                     addLog(`已${newVal ? '开启' : '关闭'}等待手动操作: ${action.description || action.type}`, 'info');
+                };
+            });
+
+            // 缓存开关 - 上传动作
+            stepList.querySelectorAll('.wf-toggle.wf-toggle-cache[data-cache-step]').forEach(toggle => {
+                toggle.onclick = (e) => {
+                    e.stopPropagation();
+                    const stepIndex = parseInt(toggle.dataset.cacheStep);
+                    const actionIndex = parseInt(toggle.dataset.cacheAction);
+                    const action = workflow.steps[stepIndex].actions[actionIndex];
+                    const currentVal = getEffectiveActionCache(stepIndex, actionIndex);
+                    const newVal = !currentVal;
+                    setActionOverride(activeWorkflowId, stepIndex, actionIndex, 'cache', newVal);
+                    saveState();
+                    updateUI();
+                    addLog(`已${newVal ? '启用' : '禁用'}缓存: ${action.description || action.type}`, 'info');
                 };
             });
 
@@ -4981,6 +5467,38 @@
                 };
             });
 
+            // 选择器点击编辑
+            stepList.querySelectorAll('.wf-action-selector-edit').forEach(el => {
+                el.onclick = (e) => {
+                    e.stopPropagation();
+                    const stepIndex = parseInt(el.dataset.step);
+                    const actionIndex = parseInt(el.dataset.action);
+                    setCurrentSelectorEditAction({ stepIndex, actionIndex });
+                    const modal = document.getElementById('selector-edit-modal');
+                    const input = document.getElementById('selector-edit-input');
+                    const resolvedDiv = document.getElementById('selector-edit-resolved');
+                    const resolvedValue = document.getElementById('selector-edit-resolved-value');
+                    const currentValue = getEffectiveActionSelector(stepIndex, actionIndex);
+                    input.value = currentValue || '';
+                    // 若含变量引用，显示实际解析值
+                    const varMatch = typeof currentValue === 'string' && currentValue.match(/\$\{(\w+)\}/);
+                    if (varMatch) {
+                        const resolved = replaceVariables(currentValue, workflow.variables);
+                        if (resolved !== currentValue && resolved !== undefined) {
+                            resolvedValue.textContent = resolved;
+                            resolvedDiv.style.display = 'block';
+                        } else {
+                            resolvedDiv.style.display = 'none';
+                        }
+                    } else {
+                        resolvedDiv.style.display = 'none';
+                    }
+                    modal.style.display = 'flex';
+                    input.focus();
+                    input.select();
+                };
+            });
+
             // 步骤绕过开关
             stepList.querySelectorAll('.bypass-step-toggle').forEach(toggle => {
                 toggle.onclick = (e) => {
@@ -4997,7 +5515,7 @@
             });
 
             // 动作启用开关
-            stepList.querySelectorAll('.wf-toggle.toggle-enable[data-bypass-step][data-bypass-action]').forEach(toggle => {
+            stepList.querySelectorAll('.wf-toggle.wf-toggle-enable[data-bypass-step][data-bypass-action]').forEach(toggle => {
                 if (toggle.dataset.waitStep) return; // skip manual toggles
                 toggle.onclick = (e) => {
                     e.stopPropagation();
@@ -5268,6 +5786,14 @@
                 if (autoContinue && workflow && workflow.enabled) {
                     addLog(`检测到 URL 变化: ${currentUrl}`, 'info');
                     scheduleAutoContinue(1000);
+                }
+
+                // 检测跨页面跳转后的自动匹配需求
+                if (autoMatchPending && workflowList?.length > 0) {
+                    addLog(`→ 检测到待匹配标记，在新页面执行自动匹配（当前 URL: ${currentUrl}）`, 'info');
+                    setAutoMatchPending(false);
+                    saveState();
+                    autoMatchWorkflow();
                 }
             }
         }
