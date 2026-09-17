@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.37
+// @version      3.0.39
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -10,6 +10,7 @@
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_setClipboard
 // @grant        GM_notification
 // @grant        GM_openInTab
 // @grant        GM_xmlhttpRequest
@@ -637,6 +638,7 @@
             justify-content: center;
             flex-shrink: 0;
             transition: all 0.15s;
+            order: 999;
         }
         #workflow-panel .wf-action-exec-btn:hover {
             background: var(--wf-success-light);
@@ -716,6 +718,15 @@
         }
         #workflow-panel .wf-action-sm-btn.highlight-btn:hover {
             background: var(--wf-primary-light);
+        }
+        #workflow-panel .wf-action-sm-btn.jump-btn {
+            color: var(--wf-success-accent);
+            border-color: var(--wf-success-border);
+            font-size: 10px;
+            line-height: 1;
+        }
+        #workflow-panel .wf-action-sm-btn.jump-btn:hover {
+            background: var(--wf-success-light);
         }
 
         /* Unified toggle switch - 统一的开关样式 */
@@ -1377,10 +1388,334 @@
         return getElement(selector, timeout);
     }
 
+    // 取选择器匹配到的全部元素（支持 CSS 选择器与 XPath），用于 extract 的 all 批量模式
+    function getAllElements(selector) {
+        if (!selector) return [];
+        const isXPath = selector.startsWith('/') || selector.startsWith('(');
+        if (isXPath) {
+            try {
+                const result = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                const els = [];
+                for (let i = 0; i < result.snapshotLength; i++) els.push(result.snapshotItem(i));
+                return els;
+            } catch (e) {
+                return [];
+            }
+        }
+        try {
+            return Array.from(document.querySelectorAll(selector));
+        } catch (e) {
+            return [];
+        }
+    }
+
     function escapeHtml(str) {
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    // 剪贴板写入：系统能力封装，供 copy 动作与模态框复制按钮共用
+    // 优先 GM_setClipboard（油猴标准能力，无手势/焦点/secure context 要求，不受页面 CSP 限制），
+    // 降级 navigator.clipboard（需 secure context），最后 execCommand 兜底。
+    // 返回实际使用的方式，供执行日志展示。
+
+    async function writeClipboard(text, mimeType = 'text') {
+        if (typeof GM_setClipboard === 'function') {
+            GM_setClipboard(text, mimeType);
+            return 'GM_setClipboard';
+        }
+        if (navigator.clipboard && window.isSecureContext) {
+            try {
+                if (mimeType === 'html' && typeof ClipboardItem !== 'undefined') {
+                    await navigator.clipboard.write([new ClipboardItem({
+                        'text/html': new Blob([text], { type: 'text/html' }),
+                        'text/plain': new Blob([text], { type: 'text/plain' })
+                    })]);
+                } else {
+                    await navigator.clipboard.writeText(text);
+                }
+                return 'clipboard-api';
+            } catch (e) {
+                // 权限不足等，继续降级
+            }
+        }
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        ta.remove();
+        if (!ok) throw new Error('剪贴板写入失败（GM_setClipboard / Clipboard API / execCommand 均不可用）');
+        return 'execCommand';
+    }
+
+    // 轻量级 Toast 通知 + 确认对话框（替代 alert/confirm）
+
+    let toastContainer = null;
+
+    function ensureContainer() {
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.id = 'wf-toast-container';
+            toastContainer.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:200000;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;';
+            document.body.appendChild(toastContainer);
+        }
+        return toastContainer;
+    }
+
+    /**
+     * 显示 toast 通知
+     * @param {string} message
+     * @param {'success'|'error'|'warning'|'info'} type
+     * @param {number} duration - 显示时长（ms）
+     */
+    function showToast(message, type = 'info', duration = 3000) {
+        const container = ensureContainer();
+
+        const colors = {
+            success: { bg: 'var(--wf-success-light)', border: 'var(--wf-success-border)', color: 'var(--wf-success-text)', icon: '✓' },
+            error: { bg: 'var(--wf-error-light)', border: 'var(--wf-error-accent)', color: 'var(--wf-error-text)', icon: '✗' },
+            warning: { bg: 'var(--wf-warning-light)', border: 'var(--wf-warning-border)', color: 'var(--wf-warning-text)', icon: '⚠' },
+            info: { bg: 'var(--wf-primary-light)', border: 'var(--wf-primary-border)', color: 'var(--wf-primary-text)', icon: 'ℹ' }
+        };
+
+        const c = colors[type] || colors.info;
+
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+        padding: 10px 18px;
+        background: ${c.bg};
+        border: 1px solid ${c.border};
+        border-radius:var(--wf-radius-lg);
+        color: ${c.color};
+        font-size: 13px;
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        pointer-events: auto;
+        opacity: 0;
+        transform: translateY(-8px);
+        transition: opacity 0.2s, transform 0.2s;
+        max-width: 400px;
+        text-align: center;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+        toast.textContent = `${c.icon} ${message}`;
+
+        container.appendChild(toast);
+
+        // fade in
+        requestAnimationFrame(() => {
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+        });
+
+        // auto dismiss
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-8px)';
+            setTimeout(() => toast.remove(), 200);
+        }, duration);
+    }
+
+    /**
+     * 显示确认对话框（替代 confirm）
+     * @param {string} message
+     * @param {object} options
+     * @returns {Promise<boolean>}
+     */
+    function showConfirm(message, options = {}) {
+        const { title = '确认操作', confirmText = '确定', cancelText = '取消', type = 'warning' } = options;
+
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.id = 'wf-confirm-overlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:200001;display:flex;align-items:center;justify-content:center;background:var(--wf-overlay);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+
+            // P0: 确认按钮实色白字用 -600/-700 档，确保对比度达标
+            const colors = {
+                warning: { btn: 'var(--wf-warning)', hover: 'var(--wf-warning-hover)' },
+                danger: { btn: 'var(--wf-error)', hover: 'var(--wf-error-hover)' },
+                info: { btn: 'var(--wf-primary-dark)', hover: 'var(--wf-primary-darker)' }
+            };
+            const c = colors[type] || colors.warning;
+
+            const dialog = document.createElement('div');
+            dialog.style.cssText = `
+            background: var(--wf-surface);
+            border-radius:var(--wf-radius-xl);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            padding: 24px;
+            min-width: 320px;
+            max-width: 420px;
+            animation: wfModalFadeIn 0.15s ease-out;
+        `;
+
+            dialog.innerHTML = `
+            <div style="font-size:16px;font-weight:600;color:var(--wf-text);margin-bottom:12px;">${title}</div>
+            <div style="font-size:14px;color:var(--wf-text-secondary);line-height:1.5;margin-bottom:20px;">${message}</div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;">
+                <button id="wf-confirm-cancel" style="padding:7px 16px;border:1px solid var(--wf-border);background:var(--wf-surface);border-radius:var(--wf-radius-md);font-size:13px;cursor:pointer;color:var(--wf-text-secondary);transition:background 0.15s;">${cancelText}</button>
+                <button id="wf-confirm-ok" style="padding:7px 16px;border:none;background:${c.btn};color:white;border-radius:var(--wf-radius-md);font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">${confirmText}</button>
+            </div>
+        `;
+
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
+
+            const cancelBtn = dialog.querySelector('#wf-confirm-cancel');
+            const okBtn = dialog.querySelector('#wf-confirm-ok');
+
+            function close(result) {
+                overlay.remove();
+                resolve(result);
+            }
+
+            cancelBtn.onclick = () => close(false);
+            okBtn.onclick = () => close(true);
+            overlay.onclick = (e) => { if (e.target === overlay) close(false); };
+
+            // keyboard
+            function onKey(e) {
+                if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); close(false); }
+                if (e.key === 'Enter') { document.removeEventListener('keydown', onKey); close(true); }
+            }
+            document.addEventListener('keydown', onKey);
+
+            okBtn.focus();
+        });
+    }
+
+    // 当前活动模态框实例：stopWorkflow 等外部事件需要强制关闭挂起的模态框，
+    // 避免 await 它的动作 Promise 永久挂起、卡死工作流
+    let activeModal = null;
+
+    /**
+     * 强制关闭当前活动模态框（结果为 'forced'），无活动模态框时静默
+     */
+    function closeActiveModal() {
+        if (activeModal) activeModal.close('forced');
+    }
+
+    /**
+     * 通用模态框（showConfirm 的扩展版：支持任意已转义 HTML 内容、复制按钮、超时自动关闭）
+     * @param {object} options
+     * @param {string} options.title - 标题
+     * @param {string} options.contentHtml - 内容 HTML（调用方负责 escapeHtml，防 XSS）
+     * @param {'ok'|'okCancel'} options.buttons - 按钮组：仅确定 / 确定+取消
+     * @param {number} options.width - 最大宽度（px）
+     * @param {number} options.timeout - >0 时到时自动关闭并 resolve('timeout')
+     * @param {string|null} options.copyText - 提供时展示"复制"按钮（复用 writeClipboard）
+     * @returns {Promise<'ok'|'cancel'|'timeout'|'forced'>}
+     */
+    function showModal(options = {}) {
+        const {
+            title = '提示',
+            contentHtml = '',
+            buttons = 'ok',
+            okText = '确定',
+            cancelText = '取消',
+            width = 460,
+            timeout = 0,
+            copyText = null
+        } = options;
+
+        // 防御：同一时刻只保留一个模态框（工作流顺序执行，正常不会叠加）
+        closeActiveModal();
+
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.id = 'wf-modal-overlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:200001;display:flex;align-items:center;justify-content:center;background:var(--wf-overlay);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+
+            const dialog = document.createElement('div');
+            dialog.style.cssText = `
+            background: var(--wf-surface);
+            border-radius:var(--wf-radius-xl);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            padding: 20px 24px;
+            min-width: 320px;
+            max-width: ${width}px;
+            animation: wfModalFadeIn 0.15s ease-out;
+        `;
+
+            // 关闭语义：okCancel 模式下 Escape/遮罩点击视为取消；ok 模式下视为确定（关闭即确认）
+            const hasCancel = buttons === 'okCancel';
+            const dismissAs = hasCancel ? 'cancel' : 'ok';
+
+            const copyBtnHtml = copyText !== null
+                ? `<button id="wf-modal-copy" style="padding:4px 10px;border:1px solid var(--wf-border);background:var(--wf-surface);border-radius:var(--wf-radius-md);font-size:12px;cursor:pointer;color:var(--wf-text-secondary);transition:all 0.15s;" title="复制内容到剪贴板">📋 复制</button>`
+                : '';
+
+            dialog.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;">
+                <div style="font-size:16px;font-weight:600;color:var(--wf-text);">${title}</div>
+                ${copyBtnHtml}
+            </div>
+            <div style="max-height:60vh;overflow:auto;margin-bottom:20px;">${contentHtml}</div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;">
+                ${hasCancel ? `<button id="wf-modal-cancel" style="padding:7px 16px;border:1px solid var(--wf-border);background:var(--wf-surface);border-radius:var(--wf-radius-md);font-size:13px;cursor:pointer;color:var(--wf-text-secondary);transition:background 0.15s;">${cancelText}</button>` : ''}
+                <button id="wf-modal-ok" style="padding:7px 16px;border:none;background:var(--wf-primary-dark);color:white;border-radius:var(--wf-radius-md);font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">${okText}</button>
+            </div>
+        `;
+
+            overlay.appendChild(dialog);
+            document.body.appendChild(overlay);
+
+            const okBtn = dialog.querySelector('#wf-modal-ok');
+            const cancelBtn = dialog.querySelector('#wf-modal-cancel');
+            const copyBtn = dialog.querySelector('#wf-modal-copy');
+
+            let timer = null;
+
+            function close(result) {
+                if (!overlay.isConnected) return;
+                clearTimeout(timer);
+                document.removeEventListener('keydown', onKey);
+                overlay.remove();
+                if (activeModal && activeModal.overlay === overlay) activeModal = null;
+                resolve(result);
+            }
+
+            okBtn.onclick = () => close('ok');
+            if (cancelBtn) cancelBtn.onclick = () => close('cancel');
+            overlay.onclick = (e) => { if (e.target === overlay) close(dismissAs); };
+
+            if (copyBtn) {
+                copyBtn.onclick = async () => {
+                    try {
+                        await writeClipboard(copyText, 'text');
+                        copyBtn.textContent = '✓ 已复制';
+                        copyBtn.style.color = 'var(--wf-success-text)';
+                        setTimeout(() => {
+                            copyBtn.textContent = '📋 复制';
+                            copyBtn.style.color = 'var(--wf-text-secondary)';
+                        }, 1500);
+                    } catch (e) {
+                        copyBtn.textContent = '✗ 失败';
+                        setTimeout(() => { copyBtn.textContent = '📋 复制'; }, 1500);
+                    }
+                };
+            }
+
+            // keyboard
+            function onKey(e) {
+                if (e.key === 'Escape') close(dismissAs);
+                if (e.key === 'Enter') close('ok');
+            }
+            document.addEventListener('keydown', onKey);
+
+            // 超时自动关闭
+            if (timeout > 0) {
+                timer = setTimeout(() => close('timeout'), timeout);
+            }
+
+            activeModal = { overlay, close };
+            okBtn.focus();
+        });
     }
 
     // 模拟完整的鼠标点击事件流
@@ -1689,6 +2024,95 @@
         }
         return bytes.buffer;
     }
+
+    // ============ extract 辅助 ============
+    // 读取元素指定来源的值（textContent/value/innerHTML/任意 DOM 属性）
+    const readElementValue = (element, attr) => {
+        if (attr === 'textContent') return element.textContent ?? '';
+        if (attr === 'value') return element.value ?? '';
+        if (attr === 'innerHTML') return element.innerHTML ?? '';
+        return element.getAttribute(attr) ?? '';
+    };
+
+    // transform 后处理（数组逐项应用）
+    // 支持：trim / trim-newlines / number（数值化，去千分位，失败保留原串）/
+    //       split:分隔符（转数组，逐项 trim，丢弃空项）/ json（解析失败保留原串）/ regex:正则
+    const applyTransform = (rawValue, transform) => {
+        if (Array.isArray(rawValue)) {
+            return transform ? rawValue.map(item => applyTransform(item, transform)) : rawValue;
+        }
+        let result = String(rawValue);
+        if (!transform) return result;
+        if (transform === 'trim') return result.trim();
+        if (transform === 'trim-newlines') return result.replace(/[\r\n]+/g, ' ').trim();
+        if (transform === 'number') {
+            // 去掉千分位（中英文逗号）与空白后数值化；失败保留原字符串，避免 NaN 污染后续插值
+            const n = parseFloat(result.replace(/[,\s，]/g, ''));
+            return isNaN(n) ? result : n;
+        }
+        if (transform === 'json') {
+            try { return JSON.parse(result); } catch (e) { return result; }
+        }
+        if (typeof transform === 'string' && transform.startsWith('split:')) {
+            return result.split(transform.slice('split:'.length))
+                .map(s => s.trim())
+                .filter(s => s !== '');
+        }
+        if (typeof transform === 'string' && transform.startsWith('regex:')) {
+            // 格式 "regex:(.+)" — 取第一个捕获组，若无捕获组则取整体匹配
+            const pattern = transform.slice('regex:'.length);
+            const match = result.match(new RegExp(pattern));
+            if (match) {
+                return match[1] !== undefined ? match[1] : match[0];
+            }
+            return '';
+        }
+        return result;
+    };
+
+    // 日志值预览：数组/对象 JSON 化并截断，避免刷屏
+    const truncateForLog = (value, max = 60) => {
+        const str = (typeof value === 'object' && value !== null) ? JSON.stringify(value) : String(value);
+        return `"${str.slice(0, max)}${str.length > max ? '…' : ''}"`;
+    };
+
+    // 按 spec 提取单个来源的值（url / urlParam / DOM 单元素 / DOM 全部匹配）
+    // spec 即 extract 动作本身或 fields 模式中的单个字段定义
+    async function extractValue(spec, variables) {
+        let rawValue;
+
+        if (spec.attribute === 'url') {
+            // 提取整个当前 URL
+            rawValue = location.href;
+        } else if (typeof spec.attribute === 'string' && spec.attribute.startsWith('urlParam:')) {
+            // 提取 URL 查询参数，如 urlParam:id
+            const paramName = spec.attribute.slice('urlParam:'.length);
+            rawValue = new URLSearchParams(location.search).get(paramName) ?? '';
+        } else {
+            // 从 DOM 元素提取
+            const selector = replaceVariables(spec.selector, variables);
+            if (!selector) {
+                throw new Error('extract 动作缺少 selector 字段（非 url/urlParam 来源时必填）');
+            }
+            if (spec.all) {
+                // 批量模式：等待首个匹配出现后收集全部（CSS 与 XPath 均支持）→ 数组
+                await getElement(selector, spec.timeout || 5000, 0);
+                rawValue = getAllElements(selector).map(el => readElementValue(el, spec.attribute || 'textContent'));
+            } else {
+                const element = await getElement(selector, spec.timeout || 5000, spec.index || 0);
+                rawValue = readElementValue(element, spec.attribute || 'textContent');
+            }
+        }
+
+        return applyTransform(rawValue, spec.transform);
+    }
+
+    // 变量值展示格式化：对象/数组 JSON 化，undefined/null 显示占位（modal 键值表用）
+    const formatVariableValue = (v) => {
+        if (v === undefined || v === null) return '(未定义)';
+        if (typeof v === 'object') return JSON.stringify(v, null, 2);
+        return String(v);
+    };
 
     const actionExecutors = {
         // 填写输入框
@@ -2149,68 +2573,132 @@
         },
 
         // 从页面元素或 URL 提取值并写入运行时变量
+        // 三种模式：
+        //   1. fields：一次提取多个变量 { 变量名: { selector, attribute, transform, ... } }
+        //   2. all:true：收集选择器全部匹配项 → 数组变量
+        //   3. 普通：单元素 / url / urlParam 提取（原有行为）
         extract: async function(action, variables) {
+            // fields 模式：逐字段提取并分别写入对应变量
+            if (action.fields && typeof action.fields === 'object') {
+                const entries = Object.entries(action.fields);
+                if (!entries.length) throw new Error('extract 的 fields 不能为空');
+                const results = [];
+                for (const [varName, spec] of entries) {
+                    const value = await extractValue(spec, variables);
+                    variables[varName] = value;
+                    results.push(`${varName} = ${truncateForLog(value)}`);
+                }
+                addLog(`✓ 批量提取 ${entries.length} 个字段: ${results.join('；')}`, 'success');
+                return;
+            }
+
             const targetVar = action.variable;
             if (!targetVar) {
                 throw new Error('extract 动作缺少 variable 字段');
             }
 
-            let rawValue;
+            const result = await extractValue(action, variables);
 
-            if (action.attribute === 'url') {
-                // 提取整个当前 URL
-                rawValue = location.href;
-            } else if (typeof action.attribute === 'string' && action.attribute.startsWith('urlParam:')) {
-                // 提取 URL 查询参数，如 urlParam:id
-                const paramName = action.attribute.slice('urlParam:'.length);
-                rawValue = new URLSearchParams(location.search).get(paramName) ?? '';
-            } else {
-                // 从 DOM 元素提取
-                const selector = replaceVariables(action.selector, variables);
-                if (!selector) {
-                    throw new Error('extract 动作缺少 selector 字段（非 url/urlParam 来源时必填）');
-                }
-                const index = action.index || 0;
-                const element = await getElement(selector, action.timeout || 5000, index);
-                const attr = action.attribute || 'textContent';
-
-                if (attr === 'textContent') {
-                    rawValue = element.textContent ?? '';
-                } else if (attr === 'value') {
-                    rawValue = element.value ?? '';
-                } else if (attr === 'innerHTML') {
-                    rawValue = element.innerHTML ?? '';
-                } else {
-                    rawValue = element.getAttribute(attr) ?? '';
-                }
-            }
-
-            // 后处理 transform
-            let result = String(rawValue);
-            const transform = action.transform;
-            if (transform) {
-                if (transform === 'trim') {
-                    result = result.trim();
-                } else if (transform === 'trim-newlines') {
-                    result = result.replace(/[\r\n]+/g, ' ').trim();
-                } else if (typeof transform === 'string' && transform.startsWith('regex:')) {
-                // 格式 "regex:(.+)" — 取第一个捕获组，若无捕获组则取整体匹配
-                    const pattern = transform.slice('regex:'.length);
-                    const match = result.match(new RegExp(pattern));
-                    if (match) {
-                        result = match[1] !== undefined ? match[1] : match[0];
-                    } else {
-                        result = '';
-                    }
-                }
+            // failIfEmpty：空值（空串/空数组）直接报错，便于配合 onError 及时暴露选择器失效
+            const isEmpty = result === '' || result === null || result === undefined ||
+                            (Array.isArray(result) && result.length === 0);
+            if (action.failIfEmpty && isEmpty) {
+                throw new Error(`提取结果为空: ${action.selector || action.attribute || ''} → ${targetVar}`);
             }
 
             // 写入运行时变量（通过 variables 引用直接赋值，对象由 engine 传入）
             variables[targetVar] = result;
 
-            const indexSuffix = (action.index > 0) ? ` [${action.index}]` : '';
+            const allSuffix = action.all ? ` [全部 ${Array.isArray(result) ? result.length : 0} 项]` : '';
+            const indexSuffix = (!action.all && action.index > 0) ? ` [${action.index}]` : '';
             const attrLabel = action.attribute || 'textContent';
-            addLog(`✓ 提取 ${action.selector || attrLabel}${indexSuffix} → ${targetVar} = "${result}"`, 'success');
+            addLog(`✓ 提取 ${action.selector || attrLabel}${indexSuffix}${allSuffix} → ${targetVar} = ${truncateForLog(result)}`, 'success');
+        },
+
+        // 模态框展示数据：content 自由文本或 variables 键值表（均支持 ${变量} 插值）。
+        // 默认等待用户关闭后继续；buttons 为 okCancel 且用户点"取消"时，
+        // 按 onCancel 决定继续 / 停止 / goto 跳转（复用 condition 的 goto 机制）
+        modal: async function(action, variables) {
+            const title = escapeHtml(String(replaceVariables(String(action.title || '提示'), variables)));
+
+            // 构建内容与可复制的纯文本（优先 content，其次 variables 键值表）
+            let contentHtml = '';
+            let copyText = '';
+            if (action.content !== undefined && action.content !== null) {
+                copyText = String(replaceVariables(String(action.content), variables));
+                contentHtml = `<div style="font-size:14px;color:var(--wf-text-secondary);line-height:1.6;white-space:pre-wrap;word-break:break-word;">${escapeHtml(copyText)}</div>`;
+            } else if (Array.isArray(action.variables) && action.variables.length) {
+                const rows = action.variables.map(name => {
+                    const display = formatVariableValue(variables[name]);
+                    return `<tr>
+                    <td style="padding:6px 12px 6px 0;font-size:13px;color:var(--wf-text);font-weight:500;vertical-align:top;white-space:nowrap;">${escapeHtml(name)}</td>
+                    <td style="padding:6px 0;font-size:13px;color:var(--wf-text-secondary);vertical-align:top;white-space:pre-wrap;word-break:break-all;max-width:300px;max-height:140px;overflow:auto;">${escapeHtml(display)}</td>
+                </tr>`;
+                }).join('');
+                contentHtml = `<table style="border-collapse:collapse;">${rows}</table>`;
+                copyText = action.variables.map(name => `${name} = ${formatVariableValue(variables[name])}`).join('\n');
+            } else {
+                contentHtml = `<div style="font-size:13px;color:var(--wf-text-faint);">（无内容：请配置 content 或 variables 字段）</div>`;
+            }
+
+            const modalPromise = showModal({
+                title,
+                contentHtml,
+                buttons: action.buttons === 'okCancel' ? 'okCancel' : 'ok',
+                okText: action.okText,
+                cancelText: action.cancelText,
+                width: action.width,
+                timeout: action.timeout || 0,
+                copyText: action.copyButton !== false && copyText ? copyText : null
+            });
+
+            // waitClose:false —— 弹出后不等待立即继续（过程播报，可配合 timeout 自动关闭）
+            if (action.waitClose === false) {
+                addLog(`✓ 弹出模态框: ${action.title || '提示'}`, 'success');
+                return;
+            }
+
+            const result = await modalPromise;
+            if (result === 'timeout') {
+                addLog(`⏱ 模态框超时自动关闭: ${action.title || '提示'}`, 'info');
+                return;
+            }
+            if (result === 'forced') {
+                addLog(`模态框已随工作流停止而关闭: ${action.title || '提示'}`, 'info');
+                return;
+            }
+            if (result === 'ok') {
+                addLog(`✓ 用户已确认模态框: ${action.title || '提示'}`, 'success');
+                return;
+            }
+
+            // 用户点了"取消"：按 onCancel 处理（continue / stop / goto 目标 id）
+            addLog(`⊘ 用户取消了模态框: ${action.title || '提示'}`, 'warning');
+            const onCancel = action.onCancel;
+            if (!onCancel || onCancel === 'continue') return;
+            // 停止请求时不再处理跳转，避免停止后流程被 goto 续命
+            if (stopRequested) return;
+            if (onCancel === 'stop') {
+                setStopRequested(true);
+                addLog(`模态框取消，按配置停止工作流`, 'warning');
+                return;
+            }
+            const target = resolveTargetId(onCancel);
+            if (!target) {
+                throw new Error(`modal onCancel 目标不存在: ${onCancel}`);
+            }
+            setGotoTarget(target);
+            addLog(`→ 跳转到: ${onCancel}`, 'info');
+        },
+
+        // 将变量内容写入系统剪贴板（GM_setClipboard 优先，降级链见 clipboard.js）
+        copy: async function(action, variables) {
+            const raw = replaceVariables(action.value !== undefined ? String(action.value) : '', variables);
+            // 插值结果可能是数组/对象（单一变量引用保留原始类型），统一序列化避免 "[object Object]"
+            const text = (raw !== null && typeof raw === 'object') ? JSON.stringify(raw, null, 2) : String(raw);
+            const mimeType = action.mimeType === 'html' ? 'html' : 'text';
+            const via = await writeClipboard(text, mimeType);
+            addLog(`✓ 已写入剪贴板（${text.length} 字符，${via}）`, 'success');
         },
 
         // 设置或修改运行时变量
@@ -2527,7 +3015,13 @@
         setIsRunning(true);
         setStopRequested(false);
         setGotoTarget(null);
-        setGotoJustJumped(false);
+
+        // 手动跳转到具体动作（jumpToAction 设置了 gotoJustJumped 与动作指针）：
+        // 需在此保留，避免被下方重置逻辑清空，使执行从指定动作开始而非步骤开头。
+        const jumpToActionMode = !autoMode && gotoJustJumped && currentActionIndex >= 0;
+        if (!jumpToActionMode) {
+            setGotoJustJumped(false);
+        }
 
         if (!autoMode) {
             // 重新开始时重置所有状态
@@ -2540,7 +3034,9 @@
             if (wasCompleted || currentStepIndex === -1) {
                 setCurrentStepIndex(0);
             }
-            setCurrentActionIndex(-1);
+            if (!jumpToActionMode) {
+                setCurrentActionIndex(-1);
+            }
             addLog(`开始执行工作流: ${workflow.name} (自动继续模式)`, 'info');
         } else {
             addLog(`URL变化，自动继续执行工作流`, 'info');
@@ -2634,6 +3130,8 @@
     function stopWorkflow() {
         if (isRunning) {
             setStopRequested(true);
+            // 强制关闭挂起的模态框（modal 动作 await 中），解除阻塞避免流程卡死
+            closeActiveModal();
             addLog(`正在停止...`, 'info');
         }
         setAutoContinue(false);
@@ -2765,142 +3263,6 @@
         setLogs([]);
         addLog(`工作流已重置`, 'info');
         updateUI$5();
-    }
-
-    // 轻量级 Toast 通知 + 确认对话框（替代 alert/confirm）
-
-    let toastContainer = null;
-
-    function ensureContainer() {
-        if (!toastContainer) {
-            toastContainer = document.createElement('div');
-            toastContainer.id = 'wf-toast-container';
-            toastContainer.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:200000;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;';
-            document.body.appendChild(toastContainer);
-        }
-        return toastContainer;
-    }
-
-    /**
-     * 显示 toast 通知
-     * @param {string} message
-     * @param {'success'|'error'|'warning'|'info'} type
-     * @param {number} duration - 显示时长（ms）
-     */
-    function showToast(message, type = 'info', duration = 3000) {
-        const container = ensureContainer();
-
-        const colors = {
-            success: { bg: 'var(--wf-success-light)', border: 'var(--wf-success-border)', color: 'var(--wf-success-text)', icon: '✓' },
-            error: { bg: 'var(--wf-error-light)', border: 'var(--wf-error-accent)', color: 'var(--wf-error-text)', icon: '✗' },
-            warning: { bg: 'var(--wf-warning-light)', border: 'var(--wf-warning-border)', color: 'var(--wf-warning-text)', icon: '⚠' },
-            info: { bg: 'var(--wf-primary-light)', border: 'var(--wf-primary-border)', color: 'var(--wf-primary-text)', icon: 'ℹ' }
-        };
-
-        const c = colors[type] || colors.info;
-
-        const toast = document.createElement('div');
-        toast.style.cssText = `
-        padding: 10px 18px;
-        background: ${c.bg};
-        border: 1px solid ${c.border};
-        border-radius:var(--wf-radius-lg);
-        color: ${c.color};
-        font-size: 13px;
-        font-weight: 500;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        pointer-events: auto;
-        opacity: 0;
-        transform: translateY(-8px);
-        transition: opacity 0.2s, transform 0.2s;
-        max-width: 400px;
-        text-align: center;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    `;
-        toast.textContent = `${c.icon} ${message}`;
-
-        container.appendChild(toast);
-
-        // fade in
-        requestAnimationFrame(() => {
-            toast.style.opacity = '1';
-            toast.style.transform = 'translateY(0)';
-        });
-
-        // auto dismiss
-        setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transform = 'translateY(-8px)';
-            setTimeout(() => toast.remove(), 200);
-        }, duration);
-    }
-
-    /**
-     * 显示确认对话框（替代 confirm）
-     * @param {string} message
-     * @param {object} options
-     * @returns {Promise<boolean>}
-     */
-    function showConfirm(message, options = {}) {
-        const { title = '确认操作', confirmText = '确定', cancelText = '取消', type = 'warning' } = options;
-
-        return new Promise((resolve) => {
-            const overlay = document.createElement('div');
-            overlay.id = 'wf-confirm-overlay';
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:200001;display:flex;align-items:center;justify-content:center;background:var(--wf-overlay);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
-
-            // P0: 确认按钮实色白字用 -600/-700 档，确保对比度达标
-            const colors = {
-                warning: { btn: 'var(--wf-warning)', hover: 'var(--wf-warning-hover)' },
-                danger: { btn: 'var(--wf-error)', hover: 'var(--wf-error-hover)' },
-                info: { btn: 'var(--wf-primary-dark)', hover: 'var(--wf-primary-darker)' }
-            };
-            const c = colors[type] || colors.warning;
-
-            const dialog = document.createElement('div');
-            dialog.style.cssText = `
-            background: var(--wf-surface);
-            border-radius:var(--wf-radius-xl);
-            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-            padding: 24px;
-            min-width: 320px;
-            max-width: 420px;
-            animation: wfModalFadeIn 0.15s ease-out;
-        `;
-
-            dialog.innerHTML = `
-            <div style="font-size:16px;font-weight:600;color:var(--wf-text);margin-bottom:12px;">${title}</div>
-            <div style="font-size:14px;color:var(--wf-text-secondary);line-height:1.5;margin-bottom:20px;">${message}</div>
-            <div style="display:flex;justify-content:flex-end;gap:8px;">
-                <button id="wf-confirm-cancel" style="padding:7px 16px;border:1px solid var(--wf-border);background:var(--wf-surface);border-radius:var(--wf-radius-md);font-size:13px;cursor:pointer;color:var(--wf-text-secondary);transition:background 0.15s;">${cancelText}</button>
-                <button id="wf-confirm-ok" style="padding:7px 16px;border:none;background:${c.btn};color:white;border-radius:var(--wf-radius-md);font-size:13px;font-weight:500;cursor:pointer;transition:background 0.15s;">${confirmText}</button>
-            </div>
-        `;
-
-            overlay.appendChild(dialog);
-            document.body.appendChild(overlay);
-
-            const cancelBtn = dialog.querySelector('#wf-confirm-cancel');
-            const okBtn = dialog.querySelector('#wf-confirm-ok');
-
-            function close(result) {
-                overlay.remove();
-                resolve(result);
-            }
-
-            cancelBtn.onclick = () => close(false);
-            okBtn.onclick = () => close(true);
-            overlay.onclick = (e) => { if (e.target === overlay) close(false); };
-
-            // keyboard
-            function onKey(e) {
-                if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); close(false); }
-                if (e.key === 'Enter') { document.removeEventListener('keydown', onKey); close(true); }
-            }
-            document.addEventListener('keydown', onKey);
-
-            okBtn.focus();
-        });
     }
 
     // updateUI 由外部注入
@@ -3132,6 +3494,29 @@
         setCurrentStepIndex(stepIndex);
         setCurrentActionIndex(-1);
         addLog(`已跳转到步骤 ${stepIndex + 1}: ${workflow.steps[stepIndex].name}`, 'info');
+        updateUI$3();
+        saveState();
+    }
+
+    // 手动跳转到具体动作：将执行指针定位到指定动作，随后点击「开始」即从该动作起执行。
+    // 复用 gotoJustJumped 语义（executeWorkflow 据此从该动作而非下一个动作开始），不依赖动作 id。
+    function jumpToAction(stepIndex, actionIndex) {
+        if (isRunning) {
+            addLog('工作流正在运行中，请先停止', 'warning');
+            return;
+        }
+        const step = workflow.steps[stepIndex];
+        const action = step && step.actions && step.actions[actionIndex];
+        if (!action) {
+            addLog(`动作 ${stepIndex + 1}.${actionIndex + 1} 不存在`, 'error');
+            return;
+        }
+        setCurrentStepIndex(stepIndex);
+        setCurrentActionIndex(actionIndex);
+        setWorkflowCompleted(false);
+        // 标记 gotoJustJumped，使 executeWorkflow 保留动作指针并从该动作开始
+        setGotoJustJumped(true);
+        addLog(`已跳转到步骤 ${stepIndex + 1}，动作 ${actionIndex + 1}: ${action.description || action.type}`, 'info');
         updateUI$3();
         saveState();
     }
@@ -3491,6 +3876,14 @@
                     // setVariable / extract 直接读写变量名字段
                     if ((action.type === 'setVariable' || action.type === 'extract') && action.variable) {
                         addAction(action.variable, step.name, action);
+                    }
+                    // extract fields 模式：各字段名即写入的变量名
+                    if (action.type === 'extract' && action.fields) {
+                        Object.keys(action.fields).forEach(name => addAction(name, step.name, action));
+                    }
+                    // modal 的 variables 列表按变量名引用
+                    if (action.type === 'modal' && Array.isArray(action.variables)) {
+                        action.variables.forEach(name => addAction(name, step.name, action));
                     }
                     // 条件判断 variableMatch 按变量名匹配
                     if (action.condition && action.condition.type === 'variableMatch' && action.condition.name) {
@@ -5252,6 +5645,12 @@
                         const gotoTrue = action.gotoTrue ? `→${action.gotoTrue}` : '';
                         const gotoFalse = action.gotoFalse ? `→${action.gotoFalse}` : '';
                         actionMeta = `${escapeHtml(condDesc)} | ${escapeHtml(gotoTrue || '继续')} / ${escapeHtml(gotoFalse || '继续')}`;
+                    } else if (actionType === 'modal') {
+                        const cancelGoto = action.buttons === 'okCancel' && action.onCancel && action.onCancel !== 'continue' && action.onCancel !== 'stop'
+                            ? ` | 取消→${action.onCancel}` : '';
+                        actionMeta = `${escapeHtml(action.title || '')}${cancelGoto}`;
+                    } else if (actionType === 'copy') {
+                        actionMeta = `${escapeHtml(action.value || '')} → 剪贴板`;
                     }
 
                     const isCurrentAction = stepIndex === currentStepIndex && actionIndex === currentActionIndex;
@@ -5304,6 +5703,9 @@
                         highlightHtml = `<button class="wf-action-sm-btn highlight-btn action-highlight-btn" data-step="${stepIndex}" data-action="${actionIndex}">💡</button>`;
                     }
 
+                    // Jump button - 跳转到该动作（点击「开始」后从此动作执行）
+                    const jumpHtml = `<button class="wf-action-sm-btn jump-btn action-jump-btn" data-step="${stepIndex}" data-action="${actionIndex}" title="跳转到该动作">📍</button>`;
+
                     const actionTypeDisplay = actionType === 'condition' ? '🔀' : actionType === 'noop' ? '·' : actionType === 'reload' ? '🔄' : actionType;
 
                     // 条件判断动作添加连接点
@@ -5327,7 +5729,7 @@
                             </div>
                             ${actionMeta ? `<div class="wf-action-meta">${actionMeta}</div>` : ''}
                         </div>
-                        ${highlightHtml}${valueEditHtml}${waitToggleHtml}${cacheToggleHtml}${bypassToggleHtml}
+                        ${highlightHtml}${valueEditHtml}${waitToggleHtml}${cacheToggleHtml}${bypassToggleHtml}${jumpHtml}
                         ${connectorHtml}
                     </div>
                 `;
@@ -5396,6 +5798,14 @@
                     } catch (err) {
                         addLog(`✗ 高亮失败: ${err.message}`, 'error');
                     }
+                };
+            });
+
+            // 跳转按钮 - 跳转到该动作
+            stepList.querySelectorAll('.action-jump-btn').forEach(btn => {
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    jumpToAction(parseInt(btn.dataset.step), parseInt(btn.dataset.action));
                 };
             });
 

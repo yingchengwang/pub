@@ -1,6 +1,6 @@
 {
   "name": "sit2信贷申请流程",
-  "version": "44",
+  "version": "45",
   "enabled": true,
   "group": "新建订单",
   "order": 2,
@@ -25,6 +25,7 @@
     "loanProposal": "Leong Yi Ying(1245026)",
     "closingBranch": "Taman Tampoi Indah Branch",
     "branchManager": [
+      "v_yingchengwang (v_yingchengwang)",
       "jenniwei (jenniwei)",
       "shibozou (shibozou)"
     ],
@@ -1050,7 +1051,7 @@
           "url": "https://yingchengwang.github.io/pub/workhelper/passport.png",
           "filename": "passport.png",
           "mimeType": "image/png",
-          "waitAfterUpload": 3000,
+          "waitAfterUpload": 1000,
           "cache": true,
           "description": "上传passport"
         },
@@ -1060,12 +1061,17 @@
           "description": "确认上传"
         },
         {
+          "type": "wait",
+          "ms": 2000,
+          "description": "等待"
+        },
+        {
           "type": "upload",
           "selector": "div.upload-grid--non-ocr input[type=\"file\"]",
           "url": "https://yingchengwang.github.io/pub/workhelper/passport.png",
           "filename": "passport.png",
           "mimeType": "image/png",
-          "waitAfterUpload": 3000,
+          "waitAfterUpload": 1000,
           "cache": true,
           "description": "上传CRA FORM"
         },
@@ -1081,32 +1087,7 @@
         },
         {
           "type": "wait",
-          "ms": 3000,
-          "description": "等待"
-        },
-        {
-          "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"]))  div.ocr-modal-content div.file-list-section > div.file-list-body> div.table-container > div.file-list-table div.ant-table-container table > tbody > tr:nth-of-type(1)> td:nth-of-type(5) button",
-          "description": "点击选择文件类型"
-        },
-        {
-          "type": "click",
-          "selector": "div.file-type-dropdown-overlay div.file-type-options-scroll >div.file-type-options > div.file-type-group > div.group-options > div.option-item >label>span>input.ant-checkbox-input[value*=\"CRA Form\"] ",
-          "description": "点击选择CRA"
-        },
-        {
-          "type": "wait",
-          "ms": 500,
-          "description": "等待"
-        },
-        {
-          "type": "click",
-          "selector": "div.file-type-dropdown-overlay > div.file-type-dropdown >div.file-type-footer > button",
-          "description": "确认"
-        },
-        {
-          "type": "wait",
-          "ms": 2000,
+          "ms": 7000,
           "description": "等待"
         },
         {
@@ -1117,42 +1098,90 @@
         },
         {
           "type": "wait",
-          "ms": 2000,
-          "description": "等待"
-        },
-        {
-          "type": "condition",
-          "description": "是否继续刷新文件状态",
-          "condition": {
-            "type": "elementAttribute",
-            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"]))  div.ocr-modal-content div.file-list-section > div.file-list-body> div.table-container > div.file-list-table div.ant-table-container table > tbody > tr:nth-of-type(2)> td:nth-of-type(13)>div.actions-cell>button:nth-of-type(1)",
-            "attribute": "disabled",
-            "match": "eq",
-            "value": true
-          },
-          "gotoTrue": "refreshFileStatus",
-          "gotoFalse": ""
-        },
-        {
-          "type": "wait",
-          "ms": 2000,
+          "ms": 4000,
           "description": "等待"
         },
         {
           "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"]))  div.ocr-modal-content div.file-list-section > div.file-list-body> div.table-container > div.file-list-table div.ant-table-container table > tbody > tr:nth-of-type(2)> td:nth-of-type(13)>div.actions-cell>button:nth-of-type(1)",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.file-list-table div.ant-table-container table > tbody button.select-file-type-btn",
+          "description": "点击Select File Type（CRA Form为非OCR上传，默认排序在第一行；按类名定位第一处）"
+        },
+        {
+          "type": "waitFor",
+          "selector": "div.file-type-dropdown-overlay div.file-type-options-scroll input.ant-checkbox-input[value*=\"CRA Form\"]",
+          "timeout": 5000,
+          "description": "等待CRA Form复选框渲染"
+        },
+        {
+          "type": "condition",
+          "description": "CRA Form是否已勾选（重跑时避免反向取消勾选）",
+          "condition": {
+            "type": "elementAttribute",
+            "selector": "div.file-type-dropdown-overlay div.file-type-options-scroll > div.file-type-options > div.file-type-group > div.group-options > div.option-item > label > span > input.ant-checkbox-input[value*=\"CRA Form\"]",
+            "attribute": "checked",
+            "match": "eq",
+            "value": true
+          },
+          "gotoTrue": "craCheckboxReady",
+          "gotoFalse": ""
+        },
+        {
+          "type": "click",
+          "selector": "div.file-type-dropdown-overlay div.file-type-options-scroll > div.file-type-options > div.file-type-group > div.group-options > div.option-item > label > span > input.ant-checkbox-input[value*=\"CRA Form\"]",
+          "description": "勾选CRA Form"
+        },
+        {
+          "id": "craCheckboxReady",
+          "type": "noop",
+          "description": "CRA Form已处于勾选状态"
+        },
+        {
+          "type": "click",
+          "selector": "div.file-type-dropdown-overlay > div.file-type-dropdown > div.file-type-footer > button",
           "description": "确认文件类型"
         },
         {
           "type": "wait",
-          "ms": 2000,
-          "description": "等待"
+          "ms": 800,
+          "description": "短暂等待类型保存接口返回与下拉弹窗关闭"
         },
         {
-          "id": "refreshFileStatus2",
+          "id": "refreshFileStatus",
           "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section >  div.file-list-body > div.filter-bar > div.filter-actions > button:nth-of-type(4)",
-          "description": "刷新文件状态"
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.filter-bar > div.filter-actions > button:nth-of-type(4)",
+          "description": "刷新文件状态（等待OCR识别出结果）"
+        },
+        {
+          "type": "wait",
+          "ms": 500,
+          "description": "短暂等待刷新接口返回（refreshFileStatus循环会继续检测）"
+        },
+        {
+          "type": "condition",
+          "description": "是否存在已启用的Quick Confirm按钮（仅OCR文件识别完成后会启用，非AI文件该按钮恒为禁用）",
+          "condition": {
+            "type": "elementExists",
+            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.file-list-table div.ant-table-container table > tbody > tr div.actions-cell button:has(span[class*=\"check-circle\"]):not([disabled])"
+          },
+          "gotoTrue": "clickQuickConfirm",
+          "gotoFalse": "refreshFileStatus"
+        },
+        {
+          "id": "clickQuickConfirm",
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.file-list-table div.ant-table-container table > tbody > tr div.actions-cell button:has(span[class*=\"check-circle\"]):not([disabled])",
+          "description": "点击Quick Confirm（按check-circle图标定位该按钮，不再依赖行序/按钮位置，避免误点预览）"
+        },
+        {
+          "type": "wait",
+          "ms": 2000,
+          "description": "等待确认接口与列表刷新"
+        },
+        {
+          "id": "refreshSubmitLoop",
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.filter-bar > div.filter-actions > button:nth-of-type(4)",
+          "description": "刷新文件状态（等待提交按钮可用）"
         },
         {
           "type": "wait",
@@ -1161,93 +1190,147 @@
         },
         {
           "type": "condition",
-          "description": "是否继续刷新文件状态",
+          "description": "Submit for Verification是否可用（unclassifiedCount=0且列表非空时才启用）",
           "condition": {
-            "type": "elementAttribute",
-            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"]))  div.ocr-modal-content div.file-list-section > div.file-list-body> div.file-list-footer-actions > button:nth-of-type(2)",
-            "attribute": "disabled",
-            "match": "eq",
-            "value": true
+            "type": "elementExists",
+            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.file-list-footer-actions > button.submit-btn:not([disabled])"
           },
-          "gotoTrue": "refreshFileStatus2",
-          "gotoFalse": "submitFileValidation"
+          "gotoTrue": "clickSubmitVerify",
+          "gotoFalse": "refreshSubmitLoop"
         },
         {
-          "id": "submitFileValidation",
+          "id": "clickSubmitVerify",
           "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"]))  div.ocr-modal-content div.file-list-section > div.file-list-body> div.file-list-footer-actions > button:nth-of-type(2)",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.file-list-footer-actions > button.submit-btn",
           "description": "提交文件校验"
         },
         {
           "type": "wait",
-          "ms": 2000,
-          "description": "等待"
+          "ms": 3000,
+          "description": "等待质检接口返回（可能弹出Review Upload Issues）"
         },
         {
+          "type": "condition",
+          "description": "是否弹出Review Upload Issues质检弹窗（文件质量/缺失文件时出现，必须处理后流程才能继续）",
+          "condition": {
+            "type": "elementVisible",
+            "selector": "div.review-upload-issues-modal"
+          },
+          "gotoTrue": "handleQualityVoid",
+          "gotoFalse": "switchToValidationTab"
+        },
+        {
+          "id": "handleQualityVoid",
           "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"]))  div.ocr-modal-content div.file-list-section > div.list-tabs > div.tab:nth-of-type(2)",
+          "selector": "div.review-upload-issues-modal div.review-upload-issues-modal__footer button:nth-of-type(1)",
+          "description": "点击Submit Anyway继续提交"
+        },
+        {
+          "type": "wait",
+          "ms": 2500,
+          "description": "等待校验触发"
+        },
+        {
+          "id": "switchToValidationTab",
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.list-tabs > div.tab:nth-of-type(2)",
           "description": "切换到校验结果tab"
         },
         {
           "type": "wait",
-          "ms": 2000,
-          "description": "等待"
+          "ms": 1500,
+          "description": "等待tab内容渲染"
+        },
+        {
+          "type": "waitFor",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results",
+          "timeout": 10000,
+          "description": "等待校验结果区域渲染"
         },
         {
           "id": "refreshFileValidateResult",
           "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section >  div.file-list-body > div.cross-validation-results> div.filter-bar > div.filter-actions > button:nth-of-type(4)",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results > div.filter-bar > div.filter-actions > button:nth-of-type(4)",
           "description": "刷新校验结果"
         },
         {
           "type": "wait",
-          "ms": 2000,
-          "description": "等待"
+          "ms": 2500,
+          "description": "等待校验结果加载"
         },
         {
           "type": "condition",
-          "description": "文件是否合格",
+          "description": "校验结果表格是否已有数据行（空表/占位行说明结果未返回，需继续刷新）",
           "condition": {
             "type": "elementExists",
-            "selector":"div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section >  div.file-list-body > div.cross-validation-results> div.ocr-scrollbar-wrap >div.cv-results-table table>tbody>tr>td:nth-of-type(8)>span.issues-badge--ok "
+            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results div.cv-results-table table > tbody span.cv-cell-wrap"
           },
-          "gotoTrue": "closeFileModal",
-          "gotoFalse": "fileCanEdit"
+          "gotoTrue": "cvRowsReady",
+          "gotoFalse": "refreshFileValidateResult"
         },
         {
-          "type": "wait",
-          "ms": 2000,
-          "description": "等待"
+          "id": "cvRowsReady",
+          "type": "noop",
+          "description": "校验结果已有数据行"
         },
         {
-          "id": "fileCanEdit",
           "type": "condition",
-          "description": "文件是否不可编辑",
+          "description": "是否仍有未出结果的行（无badge=识别/校验中；用cv-cell-wrap排除antd占位行/测量行）",
           "condition": {
-            "type": "elementAttribute",
-            "selector":"div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section >  div.file-list-body > div.cross-validation-results> div.ocr-scrollbar-wrap >div.cv-results-table table>tbody>tr>td:nth-of-type(11) button.edit-btn",
-            "attribute": "disabled",
-            "match": "eq",
-            "value": true
+            "type": "elementExists",
+            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results div.cv-results-table table > tbody tr:not(:has(span.issues-badge)):has(span.cv-cell-wrap)"
           },
           "gotoTrue": "refreshFileValidateResult",
           "gotoFalse": ""
         },
         {
+          "type": "condition",
+          "description": "是否存在校验不通过的行（红色issues badge，需逐行确认，任意一行ok不能代表全部通过）",
+          "condition": {
+            "type": "elementExists",
+            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results div.cv-results-table table > tbody tr:has(span.issues-badge--error)"
+          },
+          "gotoTrue": "checkEditReady",
+          "gotoFalse": "closeFileModal"
+        },
+        {
+          "id": "checkEditReady",
+          "type": "condition",
+          "description": "问题行的编辑按钮是否可点（Validating/Recognizing时禁用，需继续刷新等待）",
+          "condition": {
+            "type": "elementExists",
+            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results div.cv-results-table table > tbody tr:has(span.issues-badge--error) button.edit-btn:not([disabled])"
+          },
+          "gotoTrue": "clickEditBtn",
+          "gotoFalse": "refreshFileValidateResult"
+        },
+        {
+          "id": "clickEditBtn",
           "type": "click",
-          "selector":"div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section >  div.file-list-body > div.cross-validation-results> div.ocr-scrollbar-wrap >div.cv-results-table table>tbody>tr>td:nth-of-type(11) button.edit-btn",
-          "description": "点击编辑"
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results div.cv-results-table table > tbody tr:has(span.issues-badge--error) button.edit-btn:not([disabled])",
+          "description": "点击编辑（自动命中存在问题的行，不依赖行序）"
         },
         {
           "type": "wait",
-          "ms": 2000,
-          "description": "等待"
+          "ms": 2500,
+          "description": "等待详情弹窗与告警数据加载"
         },
-
+        {
+          "type": "waitFor",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-content div.alert-list div.alert-card",
+          "timeout": 10000,
+          "description": "等待告警卡片渲染完成"
+        },
         {
           "type": "click",
           "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-content > div.left-panel > div.cv-left-panel-alerts div.alert-list > div.alert-card:nth-of-type(2) > div.alert-card-actions button:nth-of-type(1)",
-          "description": "justification1"
+          "description": "点击第1个Justification"
+        },
+        {
+          "type": "waitFor",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.justification-modal-content textarea",
+          "timeout": 10000,
+          "description": "等待justification弹窗渲染（避免动画竞态）"
         },
         {
           "type": "fill",
@@ -1257,18 +1340,24 @@
         },
         {
           "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"]))  div.ant-modal-footer >div.justification-modal-footer > button:nth-of-type(2) ",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.ant-modal-footer > div.justification-modal-footer > button:nth-of-type(2)",
           "description": "确认justification1"
         },
         {
           "type": "wait",
-          "ms": 500,
-          "description": "等待"
+          "ms": 1200,
+          "description": "等待justification保存与告警列表刷新"
         },
         {
           "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-content > div.left-panel > div.cv-left-panel-alerts div.alert-list > div.alert-card:nth-of-type(3) > div.alert-card-actions > span.alert-action-trigger:nth-of-type(2)> button",
-          "description": "justification2"
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-content > div.left-panel > div.cv-left-panel-alerts div.alert-list > div.alert-card:nth-of-type(3) > div.alert-card-actions > span.alert-action-trigger:nth-of-type(2) > button",
+          "description": "点击第2个Justification"
+        },
+        {
+          "type": "waitFor",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.justification-modal-content textarea",
+          "timeout": 10000,
+          "description": "等待justification弹窗渲染"
         },
         {
           "type": "fill",
@@ -1278,43 +1367,57 @@
         },
         {
           "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"]))  div.ant-modal-footer >div.justification-modal-footer > button:nth-of-type(2) ",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.ant-modal-footer > div.justification-modal-footer > button:nth-of-type(2)",
           "description": "确认justification2"
         },
         {
           "type": "wait",
-          "ms": 500,
-          "description": "等待"
+          "ms": 1200,
+          "description": "等待justification保存与告警列表刷新"
         },
         {
           "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-content > div.left-panel > div.cv-left-panel-alerts div.alert-list > div.alert-card:nth-of-type(1) > div.alert-card-actions > span.alert-action-trigger:nth-of-type(1)> button",
-          "description": "verifyAll"
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-content > div.left-panel > div.cv-left-panel-alerts div.alert-list > div.alert-card:nth-of-type(1) > div.alert-card-actions > span.alert-action-trigger:nth-of-type(1) > button",
+          "description": "点击verifyAll"
+        },
+        {
+          "type": "wait",
+          "ms": 1500,
+          "description": "等待Verify All自动保存"
         },
         {
           "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-header > .header-left > span:nth-of-type(1) ",
-          "description": "关闭编辑"
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-header > .header-left > span:nth-of-type(1)",
+          "description": "关闭编辑详情"
+        },
+        {
+          "type": "wait",
+          "ms": 1500,
+          "description": "等待详情关闭与列表刷新"
         },
         {
           "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section >  div.file-list-body > div.cross-validation-results> div.submit-bar > button.submit-all-btn",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results > div.submit-bar > button.submit-all-btn",
           "description": "提交校验"
         },
         {
+          "type": "wait",
+          "ms": 2000,
+          "description": "等待重新校验"
+        },
+        {
           "type": "condition",
-          "description": "刷新状态",
+          "description": "重新校验后回到结果刷新循环，直到全部通过",
           "condition": {
             "type": "alwaysTrue"
           },
           "gotoTrue": "refreshFileValidateResult",
           "gotoFalse": ""
         },
-
         {
           "id": "closeFileModal",
           "type": "click",
-          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) > div.ocr-modal-fixed>div.ant-modal button.ant-modal-close ",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) > div.ocr-modal-fixed > div.ant-modal button.ant-modal-close",
           "description": "关闭文件框"
         }
       ],
@@ -1324,6 +1427,20 @@
       "name": "19. 最终提交",
       "actions": [
         {
+          "type": "extract",
+          "selector": "#app > section > section > div > div > div.ant-tabs.ant-tabs-top.tabs-container > div.ant-tabs-nav > div > div > div.ant-tabs-tab.ant-tabs-tab-with-remove.ant-tabs-tab-active>div.ant-tabs-tab-btn > span > span",
+          "attribute": "textContent",
+          "variable": "orderNo",
+          "transform": "trim",
+          "failIfEmpty": true,
+          "description": "获取AppRefNo"
+        },
+        {
+          "type": "copy",
+          "value": "${orderNo}",
+          "description": "复制到剪贴板，粘贴到业务系统"
+        },
+        {
           "type": "click",
           "selector": "#app > section > section > main > div > div.layout-main > div > div.action-buttons > div.action-buttons-right > button:nth-child(4)",
           "description": "点击submit"
@@ -1332,6 +1449,15 @@
           "type": "click",
           "selector": "div.file-integrity-modal-wrap  div.ant-modal-body > div.file-integrity-modal div.file-integrity-modal__actions button:nth-of-type(2)",
           "description": "Proceed Anyway"
+        },
+        {
+          "type": "modal",
+          "title": "确认订单号",
+          "content": "订单号：${orderNo} 已复制，可直接粘贴",
+          "buttons": "ok",
+          "onCancel": "continue",
+          "copyButton": true,
+          "description": "展示订单号"
         }
       ],
       "bypass": true

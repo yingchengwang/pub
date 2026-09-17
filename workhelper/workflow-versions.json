@@ -1,8 +1,8 @@
 {
   "workflows": {
     "sit2信贷申请流程": {
-      "version": "44",
-      "updatedAt": "2026-09-03",
+      "version": "45",
+      "updatedAt": "2026-09-17",
       "url": "https://yingchengwang.github.io/pub/workhelper/workflow-config-credit-application_sit2.json",
       "changelog": "- 支持一键进件提交;\n - 支持文件上传，默认关闭合同、文件上传及提交三个步骤 \n - 建议在变量管理中修改变量值；"
     },

@@ -1,5 +1,5 @@
 {
-    "version": "3.0.37",
-    "updatedAt": "2026-09-03",
-    "changelog": "- 支持文件上传； \n - bug修复"
+    "version": "3.0.39",
+    "updatedAt": "2026-09-14",
+    "changelog": "- 支持一键直达submit，文件自动上传；\n- 新增 modal 模态框展示动作（variables 键值表 / content 插值，取消可 goto 跳转）；\n- 新增 copy 剪贴板写入动作（GM_setClipboard，支持 text/html）；\n- extract 增强：fields 多字段提取、all 批量提数组、number/split/json 后处理、failIfEmpty 空值报错"
 }
