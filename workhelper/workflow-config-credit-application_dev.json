@@ -1,9 +1,9 @@
 {
   "name": "dev信贷申请流程",
-  "version": "31",
+  "version": "32",
   "enabled": true,
   "group": "新建订单",
-  "order": 0,
+  "order": 2,
   "urlMatchers": [
     { "match": ["119.91.243.240", "crediosweb"], "exclude": ["cas/login"] }
   ],
@@ -14,7 +14,44 @@
     "mobilePhoneNo": "9858868",
     "lendingType": "Islamic",
     "deliveryChannel": "H29 - ALC SEREMBAN",
-    "loanProposal": "Leong Yi Ying(1245026)"
+    "loanProposal": "Leong Yi Ying(1245026)",
+    "closingBranch": "Taman Tampoi Indah Branch",
+    "branchManager": [
+      "v_yingchengwang (v_yingchengwang)",
+      "##1"
+    ],
+    "maritalStatus": "Single",
+    "race": "Malay",
+    "noOfDependents": "3",
+    "emailAddress": "123@qq.com",
+    "employerName": "AutoFillHelperEmpName",
+    "purchasePrice": "88888",
+    "amountApplied": "44444",
+    "addressLine1": "123",
+    "addressLine2": "123",
+    "address1Type": "Work/Office Address",
+    "workAddressLine1": "123",
+    "workAddressLine2": "123",
+    "homeOwnership": "Employer's",
+    "occupation": "ABLE-BODIED SEAMAN/G069-SHIPS, DECK CREWS AND RELATED WORKERS",
+    "employmentType": "Employer",
+    "employmentSector": "Accommodation and Food Service Activities",
+    "industrySector": "Cafeterias/canteens",
+    "lengthOfServiceYears": "1",
+    "lengthOfServiceMonths": "1",
+    "assetValue": "1",
+    "vehicleStatus": "New",
+    "makeCode": "AUDI",
+    "familyCode": "A3 2.0(A)",
+    "modelReference": "##1",
+    "manufactureYear": "2025",
+    "dealerCode": "98140000101",
+    "tenure": "12",
+    "handlingFee": "12",
+    "proposedInterestRate": "3",
+    "incomeMonth": "01/2025",
+    "incomeAmount": "99999",
+    "salespersonName": "2025"
   },
   "execution": {
     "stepDelay": 50,
@@ -43,7 +80,7 @@
       "actions": [
         {
           "type": "click",
-          "selector": "//*[@id=\"app\"]/section/section/main/div/div[1]/div/div[2]/div/div/form/div/div[13]/div/button[3]",
+          "selector": "#app > section > .layout-main-wrap > main > .std--list-page > div:nth-of-type(1)  form > div:last-of-type button:last-of-type ",
           "description": "点击 New Application 按钮"
         },
         {
@@ -65,6 +102,11 @@
           "waitUserAction": false
         },
         {
+          "type": "wait",
+          "ms": 200,
+          "description": "等待数据加载"
+        },
+        {
           "type": "click",
           "selector": "#form_item_idNumber + span > span",
           "description": "点击搜索按钮"
@@ -75,10 +117,51 @@
           "description": "等待数据加载"
         },
         {
+          "type": "condition",
+          "description": "是否是新版组合框姓名输入",
+          "condition": {
+            "type": "elementExists",
+            "selector": "#iv-customer-basic-editable + form div:has(label[title=\"Customer Name\"]) + div input[type=\"search\"]"
+          },
+          "gotoTrue": "inputNewName",
+          "gotoFalse": "inputOldName"
+        },
+        {
+          "id": "inputNewName",
+          "type": "select",
+          "selector": "#iv-customer-basic-editable + form div:has(label[title=\"Customer Name\"]) + div input[type=\"search\"]",
+          "value": "##1",
+          "description": "选择 Customer Name",
+          "waitAfterClick": 1000
+        },
+        {
+          "id": "inputOldName",
+          "type": "fill",
+          "selector": "#iv-customer-basic-editable + form div:has(label[title=\"Customer Name\"]) + div input[id=\"form_item_name\"]",
+          "value": "${customerName}",
+          "description": "新版输入姓名"
+        },
+        {
+          "type": "condition",
+          "description": "流程跳转",
+          "condition": {
+            "type": "alwaysTrue"
+          },
+          "gotoTrue": "waitAfterInputCustName",
+          "gotoFalse": ""
+        },
+        {
+          "id": "inputOldName",
           "type": "fill",
           "selector": "#iv-customer-basic-editable + form div:has(label[title=\"Customer Name\"]) + div input",
           "value": "${customerName}",
           "description": "输入姓名"
+        },
+        {
+          "id": "waitAfterInputCustName",
+          "type": "wait",
+          "ms": 100,
+          "description": "等待"
         },
         {
           "type": "fill",
@@ -86,6 +169,11 @@
           "value": "${mobilePhoneNo}",
           "description": "输入手机号",
           "waitUserAction": false
+        },
+        {
+          "id": "fillUserNameSuccess",
+          "type": "noop",
+          "description": "姓名输入成功"
         }
       ]
     },
@@ -106,13 +194,27 @@
           "waitAfterClick": 1000
         },
         {
+          "type": "condition",
+          "description": "是否需要选择Delivery Channel",
+          "condition": {
+            "type": "elementAttribute",
+            "selector": "span:has(input#form_item_deliveryChannel) + span.ant-select-selection-item",
+            "attribute": "title",
+            "match": "empty"
+          },
+          "gotoTrue": "selectDeliveryChannel",
+          "gotoFalse": "selectLoanProposal"
+        },
+        {
+          "id": "selectDeliveryChannel",
           "type": "select",
           "selector": "#form_item_deliveryChannel",
           "value": "${deliveryChannel}",
           "description": "选择Delivery Channel",
-          "waitAfterClick": 800
+          "waitAfterClick": 300
         },
         {
+          "id": "selectLoanProposal",
           "type": "click",
           "selector": "#form_item_loanProposalId",
           "description": "点击选择loanProposal"
@@ -123,18 +225,32 @@
           "description": "选第一个loanProposal"
         },
         {
-          "type": "select",
-          "selector": "#form_item_closingBranch",
-          "value": "Taman Tampoi Indah Branch",
-          "description": "选择 closingBranch",
-          "waitAfterClick": 800
+          "type": "condition",
+          "description": "是否需要选择closingBranch",
+          "condition": {
+            "type": "elementAttribute",
+            "selector": "span:has(input#form_item_closingBranch) + span.ant-select-selection-item",
+            "attribute": "title",
+            "match": "empty"
+          },
+          "gotoTrue": "selectClosingBranch",
+          "gotoFalse": "selectBranchManager"
         },
         {
+          "id": "selectClosingBranch",
+          "type": "select",
+          "selector": "#form_item_closingBranch",
+          "value": "${closingBranch}",
+          "description": "选择 closingBranch",
+          "waitAfterClick": 300
+        },
+        {
+          "id": "selectBranchManager",
           "type": "select",
           "selector": "#form_item_branchManager",
-          "value": "SalesSupport2 (salsup2)",
+          "value": "${branchManager}",
           "description": "选择 Sales Manager",
-          "waitAfterClick": 800
+          "waitAfterClick": 300
         },
         {
           "type": "wait",
@@ -165,23 +281,23 @@
         {
           "type": "select",
           "selector": "#form_item_race",
-          "value": "Malay",
+          "value": "${race}",
           "description": "选择 race",
-          "waitAfterClick": 800
+          "waitAfterClick": 300
         },
         {
           "type": "select",
           "selector": "#form_item_maritalStatus",
-          "value": "Single",
+          "value": "${maritalStatus}",
           "description": "选择 Marital Status",
-          "waitAfterClick": 800
+          "waitAfterClick": 300
         },
         {
           "type": "fill",
           "selector": "#form_item_noOfDependents",
-          "value": "3",
+          "value": "${noOfDependents}",
           "description": "输入 Number of Dependents",
-          "waitAfterClick": 800
+          "waitAfterClick": 300
         }
       ]
     },
@@ -207,21 +323,21 @@
         {
           "type": "fill",
           "selector": "#form_item_addressLine1",
-          "value": "123",
+          "value": "${addressLine1}",
           "description": "line1"
         },
         {
           "type": "fill",
           "selector": "#form_item_addressLine2",
-          "value": "123",
+          "value": "${addressLine2}",
           "description": "line2"
         },
         {
           "type": "select",
-          "selector": "#form_item_homeOwnership",
-          "value": "Employer's",
+          "selector": "#home-address + form div:has(label[title=\"Home Ownership\"]) +div input[type=\"search\"]",
+          "value": "${homeOwnership}",
           "description": "选择 Home Ownership",
-          "waitAfterClick": 800
+          "waitAfterClick": 100
         }
       ]
     },
@@ -230,13 +346,21 @@
       "actions": [
         {
           "type": "scroll",
-          "selector": "div:has(#home-address) + div label[title=\"Address Type\"]",
+          "selector": "div:has(#home-address) + div label[for*=\"addressType\"]",
           "block": "center",
           "description": "滚动到 Work Address"
         },
         {
+          "type": "select",
+          "selector": "#form_item_addressList_1_addressType",
+          "value": "${address1Type}",
+          "description": "选择Address Type",
+          "waitAfterClick": 100,
+          "bypass": true
+        },
+        {
           "type": "click",
-          "selector": "div:has(#home-address) + div div:has(label[title=\"Postcode\"]) + div  span.ant-select-selection-item",
+          "selector": "div:has(#home-address) + div.app-sub-module-container > form > form div:has(label[title=\"Postcode\"]) + div input",
           "description": "点击PostCode"
         },
         {
@@ -248,13 +372,13 @@
         {
           "type": "fill",
           "selector": "div:has(#home-address) + div div:has(label[title=\"Address Line 1\"]) + div  input",
-          "value": "123",
+          "value": "${workAddressLine1}",
           "description": "line1"
         },
         {
           "type": "fill",
           "selector": "div:has(#home-address) + div div:has(label[title=\"Address Line 2\"]) + div  input",
-          "value": "123",
+          "value": "${workAddressLine2}",
           "description": "line2"
         }
       ]
@@ -271,7 +395,7 @@
         {
           "type": "fill",
           "selector": "#form_item_emailAddress",
-          "value": "123@qq.com",
+          "value": "${emailAddress}",
           "description": "email"
         },
         {
@@ -309,29 +433,29 @@
         {
           "type": "fill",
           "selector": "#form_item_employerName",
-          "value": "AutoFillHelperEmpName",
+          "value": "${employerName}",
           "description": "输入 Employer Name"
         },
         {
           "type": "select",
           "selector": "#form_item_occupation",
-          "value": "ABLE-BODIED SEAMAN/G069-SHIPS, DECK CREWS AND RELATED WORKERS",
+          "value": "${occupation}",
           "description": "选择 Occupation Name",
-          "waitAfterClick": 800
+          "waitAfterClick": 300
         },
         {
           "type": "select",
           "selector": "#form_item_employmentType",
-          "value": "Employer",
+          "value": "${employmentType}",
           "description": "选择 Employment Type",
-          "waitAfterClick": 800
+          "waitAfterClick": 300
         },
         {
           "type": "select",
           "selector": "#form_item_employmentSector",
-          "value": "Accommodation and Food Service Activities",
+          "value": "${employmentSector}",
           "description": "选择 Employment Sector",
-          "waitAfterClick": 800
+          "waitAfterClick": 300
         },
         {
           "type": "wait",
@@ -341,20 +465,20 @@
         {
           "type": "select",
           "selector": "#form_item_industrySector",
-          "value": "Cafeterias/canteens",
+          "value": "${industrySector}",
           "description": "选择 Industry Sector",
-          "waitAfterClick": 800
+          "waitAfterClick": 300
         },
         {
           "type": "fill",
           "selector": "#form_item_lengthOfServiceYears",
-          "value": "1",
+          "value": "${lengthOfServiceYears}",
           "description": "输入year"
         },
         {
           "type": "fill",
           "selector": "#form_item_lengthOfServiceMonths",
-          "value": "1",
+          "value": "${lengthOfServiceMonths}",
           "description": "输入month"
         }
       ]
@@ -381,49 +505,49 @@
         {
           "type": "fill",
           "selector": "#investments-savings + section div:has(label[title=\"Saving Acc. Balance\"]) + div input",
-          "value": "1",
+          "value": "${assetValue}",
           "description": "输入Saving Acc. Balance"
         },
         {
           "type": "fill",
           "selector": "#investments-savings + section div:has(label[title=\"Current Acc. Credit End Balance\"]) + div input",
-          "value": "1",
+          "value": "${assetValue}",
           "description": "输入Current Acc. Credit End Balance"
         },
         {
           "type": "fill",
           "selector": "#investments-savings + section div:has(label[title=\"FD / GIA Receipts Value\"]) + div input",
-          "value": "1",
+          "value": "${assetValue}",
           "description": "输入FD / GIA Receipts Value"
         },
         {
           "type": "fill",
           "selector": "#investments-savings + section div:has(label[title=\"Unit Trust/Investment Value\"]) + div input",
-          "value": "1",
+          "value": "${assetValue}",
           "description": "输入Unit Trust/Investment Value"
         },
         {
           "type": "fill",
           "selector": "#investments-savings + section div:has(label[title=\"CDS Statement Value\"]) + div input",
-          "value": "1",
+          "value": "${assetValue}",
           "description": "输入CDS Statement Value"
         },
         {
           "type": "fill",
           "selector": "#investments-savings + section div:has(label[title=\"Other Valid Networth Value\"]) + div input",
-          "value": "1",
+          "value": "${assetValue}",
           "description": "输入Other Valid Networth Value"
         },
         {
           "type": "fill",
           "selector": "#investments-savings + section div:has(label[title=\"OMV of Unencumbered Properties\"]) + div input",
-          "value": "1",
+          "value": "${assetValue}",
           "description": "输入OMV of Unencumbered Properties"
         },
         {
           "type": "fill",
           "selector": "#investments-savings + section div:has(label[title=\"Total Balance of EPF Statement\"]) + div input",
-          "value": "1",
+          "value": "${assetValue}",
           "description": "输入Total Balance of EPF Statement"
         }
       ]
@@ -456,7 +580,7 @@
         {
           "type": "fill",
           "selector": "#form_item_purchasePrice",
-          "value": "88888",
+          "value": "${purchasePrice}",
           "description": "输入购买价格"
         },
         {
@@ -467,30 +591,23 @@
         {
           "type": "select",
           "selector": "#form_item_vehicleStatus",
-          "value": "New",
+          "value": "${vehicleStatus}",
           "description": "选择车辆状态",
-          "waitAfterClick": 800
+          "waitAfterClick": 300
         },
         {
           "type": "select",
           "selector": "#form_item_makeCode",
-          "value": "AUDI",
+          "value": "${makeCode}",
           "description": "选择车辆品牌",
-          "waitAfterClick": 800
+          "waitAfterClick": 300
         },
         {
           "type": "select",
           "selector": "#form_item_familyCode",
-          "value": "A3 2.0(A)",
+          "value": "${familyCode}",
           "description": "选择车辆MR",
-          "waitAfterClick": 800
-        },
-        {
-          "type": "select",
-          "selector": "#form_item_modelReference",
-          "value": "1.4 TFSI SEDAN S-Tronic FWD Petrol 8V",
-          "description": "选择车辆FisMD",
-          "waitAfterClick": 800
+          "waitAfterClick": 300
         },
         {
           "type": "click",
@@ -500,9 +617,16 @@
         },
         {
           "type": "click",
-          "selector": "table.ant-picker-content > tbody > tr >td[title=\"2025\"]",
+          "selector": "table.ant-picker-content > tbody > tr >td[title=\"${manufactureYear}\"]",
           "description": "选择年份",
           "waitUserAction": false
+        },
+        {
+          "type": "select",
+          "selector": "#form_item_modelReference",
+          "value": "${modelReference}",
+          "description": "选择车辆FisMD",
+          "waitAfterClick": 300
         }
       ]
     },
@@ -516,17 +640,51 @@
           "description": "滚动到 dealer-info"
         },
         {
-          "type": "select",
+          "type": "click",
           "selector": "#form_item_dealerCode",
-          "value": "98140000101",
-          "description": "选择经销商代码",
-          "waitAfterClick": 800
+          "description": "点击经销商代码"
+        },
+        {
+          "type": "fill",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.search-wrapper input[placeholder=\"Search Dealer Code\"]",
+          "value": "${dealerCode}",
+          "description": "输入经销商代码"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.search-wrapper div.ant-form-item-control-input-content button",
+          "description": "点击搜索"
+        },
+        {
+          "type": "wait",
+          "ms": 400,
+          "description": "等待"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.ant-modal-content > div.ant-modal-body > div.ant-table-wrapper div.ant-table-body>table >tbody>tr:nth-of-type(2) > td:nth-of-type(1) input[type=\"radio\"]",
+          "description": "选中"
+        },
+        {
+          "type": "wait",
+          "ms": 200,
+          "description": "等待"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.ant-modal-footer>button",
+          "description": "点击OK"
+        },
+        {
+          "type": "wait",
+          "ms": 200,
+          "description": "等待"
         },
         {
           "type": "fill",
           "selector": "#form_item_salespersonName",
-          "value": "2025",
-          "description": "输入生产年份"
+          "value": "${salespersonName}",
+          "description": "输入销售人员名称"
         }
       ]
     },
@@ -556,7 +714,7 @@
       "actions": [
         {
           "type": "click",
-          "selector": "section.layout-main-wrap > main > div > div > div.ant-card-body > div >div.ant-tabs-content-holder > div >div:nth-child(1) > div > div > div.footer-section  div.button-group button:nth-child(1)",
+          "selector": ".ant-card-body .income-container > div.footer-section  div.button-group button:nth-child(1)",
           "description": "点击 add"
         },
         {
@@ -567,7 +725,7 @@
         {
           "type": "fill",
           "selector": "div.detail-container > div.income-detail > form > div.monthly-income-table table > tbody > tr:nth-child(2) > td:nth-child(1) > div.month-year-cell > input",
-          "value": "01/2025",
+          "value": "${incomeMonth}",
           "description": "输入年份"
         },
         {
@@ -577,20 +735,20 @@
         },
         {
           "type": "fill",
-          "selector": "div.detail-container > div.income-detail > form > div.monthly-income-table table > tbody > tr:nth-child(2) > td:nth-child(2) > input",
-          "value": "99999",
+          "selector": "div.detail-container > div.income-detail > form > div.monthly-income-table table > tbody > tr:nth-child(2) > td:nth-child(2)  input",
+          "value": "${incomeAmount}",
           "description": "输入金额1"
         },
         {
           "type": "fill",
-          "selector": "div.detail-container > div.income-detail > form > div.monthly-income-table table > tbody > tr:nth-child(3) > td:nth-child(2) > input",
-          "value": "99999",
+          "selector": "div.detail-container > div.income-detail > form > div.monthly-income-table table > tbody > tr:nth-child(3) > td:nth-child(2)  input",
+          "value": "${incomeAmount}",
           "description": "输入金额2"
         },
         {
           "type": "fill",
-          "selector": "div.detail-container > div.income-detail > form > div.monthly-income-table table > tbody > tr:nth-child(4) > td:nth-child(2) > input",
-          "value": "99999",
+          "selector": "div.detail-container > div.income-detail > form > div.monthly-income-table table > tbody > tr:nth-child(4) > td:nth-child(2)  input",
+          "value": "${incomeAmount}",
           "description": "输入金额3"
         },
         {
@@ -609,18 +767,40 @@
           "description": "等待"
         },
         {
+          "type": "condition",
+          "description": "是否有保存成功提示框",
+          "condition": {
+            "type": "elementVisible",
+            "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.ant-modal-confirm-btns>button"
+          },
+          "gotoTrue": "closeSaveSuccessModal",
+          "gotoFalse": "waitToClickIncome"
+        },
+        {
+          "id": "closeSaveSuccessModal",
           "type": "click",
-          "selector": "main > div.sales-calculator-page > div.page-card > div.ant-card-body > div > div.ant-tabs-content-holder > div > div:nth-child(1) > div >  div.income-container > div.table-container >div.ant-table-wrapper > div > div > div.ant-table > div > div.ant-table-header >  table:nth-of-type(1) > thead > tr > th:nth-child(1) input:nth-of-type(1)",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div div.ant-modal-confirm-btns>button",
+          "description": "点击OK关闭提示框"
+        },
+        {
+          "id": "waitToClickIncome",
+          "type": "wait",
+          "ms": 1000,
+          "description": "等待"
+        },
+        {
+          "type": "click",
+          "selector": "div.sales-calculator-page > div.page-card > div.ant-card-body > div.calculator-tabs > div.ant-tabs-content-holder > div > div:nth-child(1) > div >  div.income-container > div.table-container >div.ant-table-wrapper > div > div > div.ant-table > div > div.ant-table-header >  table:nth-of-type(1) > thead > tr > th:nth-child(1) input:nth-of-type(1)",
           "description": "勾选收入"
         },
         {
           "type": "click",
-          "selector": "main > div.sales-calculator-page > div.page-card > div.ant-card-body > div > div.ant-tabs-content-holder > div >div:nth-child(1) > div > div.income-container > div:nth-child(2) > div:nth-child(2) > button:nth-child(2)",
+          "selector": "div.sales-calculator-page > div.page-card > div.ant-card-body > div.calculator-tabs > div.ant-tabs-content-holder > div > div:nth-child(1) > div >  div.income-container > div.footer-section > div.button-group > button:nth-child(2)",
           "description": "点击 update"
         },
         {
           "type": "click",
-          "selector": "#app > section > section > main > div > div > div > header > div > span",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div .ant-modal-content>button[aria-label=\"Close\"]",
           "description": "返回主界面"
         }
       ]
@@ -635,11 +815,23 @@
           "description": "滚动到 收入"
         },
         {
+          "type": "condition",
+          "description": "是否刷新收入",
+          "condition": {
+            "type": "elementVisible",
+            "selector": "#applicant-income > div > button:nth-child(2)"
+          },
+          "gotoTrue": "refreshInCome",
+          "gotoFalse": "chooseDoc"
+        },
+        {
+          "id": "refreshInCome",
           "type": "click",
           "selector": "#applicant-income > div > button:nth-child(2)",
           "description": "刷新收入"
         },
         {
+          "id": "chooseDoc",
           "type": "click",
           "selector": "#applicant-income + form > section div:has(label[title=\"Primary Income Doc\"]) + div input",
           "description": "click选择Doc"
@@ -673,7 +865,7 @@
         {
           "type": "fill",
           "selector": "#form_item_amountApplied",
-          "value": "44444",
+          "value": "${amountApplied}",
           "description": "申请金额"
         },
         {
@@ -684,18 +876,18 @@
         {
           "type": "fill",
           "selector": "#form_item_tenure",
-          "value": "12",
+          "value": "${tenure}",
           "description": "期限"
         },
         {
           "type": "click",
-          "selector": "div.ant-input-number:has(div > #form_item_tenure) > div:nth-of-type(1) > span[role=\"button\"]:nth-of-type(2)",
+          "selector": "div.ant-input-number:has(div > #form_item_tenure) > div:nth-of-type(1) > span[role=\"button\"]:nth-of-type(1)",
           "description": "避免期限爆红"
         },
         {
           "type": "fill",
           "selector": "#form_item_handlingFee",
-          "value": "12",
+          "value": "${handlingFee}",
           "description": "手续费"
         },
         {
@@ -710,6 +902,17 @@
           "description": "滚动到 IR"
         },
         {
+          "type": "condition",
+          "description": "判断前端IR布局",
+          "condition": {
+            "type": "elementVisible",
+            "selector": "#facility-financing > div > div form div:has(label[title=\"Proposed Rate By\"]) ~ div div.segmented-item:nth-of-type(3)"
+          },
+          "gotoTrue": "ir1",
+          "gotoFalse": "ir2"
+        },
+        {
+          "id": "ir1",
           "type": "click",
           "selector": "#facility-financing > div > div form div:has(label[title=\"Proposed Rate By\"]) ~ div div.segmented-item:nth-of-type(3)",
           "description": "选择IR"
@@ -717,7 +920,7 @@
         {
           "type": "fill",
           "selector": "#form_item_proposedInterestRate",
-          "value": "4",
+          "value": "${proposedInterestRate}",
           "description": "利率"
         },
         {
@@ -726,6 +929,33 @@
           "description": "计算"
         },
         {
+          "type": "condition",
+          "description": "直接等待",
+          "condition": {
+            "type": "alwaysTrue"
+          },
+          "gotoTrue": "irWait",
+          "gotoFalse": ""
+        },
+        {
+          "id": "ir2",
+          "type": "click",
+          "selector": "#facility-financing > div > div form div:has(label[title=\"Proposed Rate By\"]) ~ div div.segmented-item:nth-of-type(2)",
+          "description": "选择IR"
+        },
+        {
+          "type": "fill",
+          "selector": "#form_item_proposedInterestRateEir",
+          "value": "${proposedInterestRate}",
+          "description": "利率"
+        },
+        {
+          "type": "click",
+          "selector": "div:has(>div > div.ant-form-item > div > div > label[title=\"Proposed Rate By\"]) > div:nth-of-type(4) button",
+          "description": "计算"
+        },
+        {
+          "id": "irWait",
           "type": "wait",
           "ms": 1000,
           "description": "等待数据加载"
@@ -778,16 +1008,558 @@
         },
         {
           "type": "click",
-          "selector": "div:has(div[id^=\"vcDialogTitle\"]) div.ant-modal-footer > button:nth-of-type(2)",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-mask:not([style*=\"display:none\"])) div:nth-of-type(2)> div.ant-modal > div > div.ant-modal-content > div.ant-modal-footer button:nth-of-type(2)",
           "description": "关闭合同面板"
         },
         {
           "type": "wait",
           "ms": 200,
           "description": "等待关闭完成"
+        },
+        {
+          "type": "condition",
+          "description": "是否关闭失败",
+          "condition": {
+            "type": "elementVisible",
+            "selector": "#vcDialogTitle1"
+          },
+          "gotoTrue": "eConsentCloseError",
+          "gotoFalse": "eConsentCloseSuccess"
+        },
+        {
+          "id": "eConsentCloseError",
+          "type": "click",
+          "selector": "div:has(div[id=\"vcDialogTitle1\"]) div.ant-modal-footer > button:nth-of-type(1)",
+          "description": "点击cancel"
+        },
+        {
+          "type": "click",
+          "selector": "div:has(div[id=\"vcDialogTitle0\"]) ~ div.ant-modal-footer  button:nth-child(1)",
+          "description": "点close"
+        },
+        {
+          "id": "eConsentCloseSuccess",
+          "type": "noop",
+          "description": "合同面板关闭成功"
         }
       ],
-      "runtimeBypass": true
+      "bypass": false
+    },
+    {
+      "name": "18. 上传必要文件",
+      "actions": [
+        {
+          "type": "click",
+          "selector": "#app > section > section > main > div > div.layout-right > div.right-sidebar > div.quick-actions-card > div > button",
+          "description": "点击documents"
+        },
+        {
+          "type": "upload",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div .upload-section .zone-drop--ai input[type=\"file\"]",
+          "url": "https://yingchengwang.github.io/pub/workhelper/passport.png",
+          "filename": "passport.png",
+          "mimeType": "image/png",
+          "waitAfterUpload": 1000,
+          "cache": true,
+          "description": "上传passport"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.upload-confirm-modal > div.modal-footer >  div.action-buttons button:nth-of-type(2)",
+          "description": "确认上传"
+        },
+        {
+          "type": "wait",
+          "ms": 2000,
+          "description": "等待"
+        },
+        {
+          "type": "upload",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div .upload-section .zone-drop--manual input[type=\"file\"]",
+          "url": "https://yingchengwang.github.io/pub/workhelper/passport.png",
+          "filename": "passport.png",
+          "mimeType": "image/png",
+          "waitAfterUpload": 1000,
+          "cache": true,
+          "description": "上传CRA FORM"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.upload-confirm-modal > div.modal-footer >  div.action-buttons button:nth-of-type(2)",
+          "description": "确认上传"
+        },
+        {
+          "type": "wait",
+          "ms": 6000,
+          "description": "等待"
+        },
+        {
+          "type": "upload",
+          "selector": "div.ant-modal-root >div.ant-modal-mask:not([style*=\"display: none;\"]) + div .upload-section .zone-drop--manual input[type=\"file\"]",
+          "url": "https://yingchengwang.github.io/pub/workhelper/passport.png",
+          "filename": "passport.png",
+          "mimeType": "image/png",
+          "waitAfterUpload": 1000,
+          "cache": true,
+          "description": "上传HP Application Form"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.upload-confirm-modal > div.modal-footer >  div.action-buttons button:nth-of-type(2)",
+          "description": "确认上传"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section >  div.file-list-body > div.filter-bar > div.filter-actions > button:nth-of-type(4)",
+          "description": "刷新文件状态"
+        },
+        {
+          "type": "wait",
+          "ms": 6000,
+          "description": "等待"
+        },
+        {
+          "id": "refreshFileStatus",
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section >  div.file-list-body > div.filter-bar > div.filter-actions > button:nth-of-type(4)",
+          "description": "刷新文件状态"
+        },
+        {
+          "type": "wait",
+          "ms": 4000,
+          "description": "等待"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.file-list-table div.ant-table-container table > tbody >tr:nth-of-type(1) button.select-file-type-btn",
+          "description": "点击Select File Type（CRA Form为非OCR上传，默认排序在第一行；按类名定位第一处）"
+        },
+        {
+          "type": "waitFor",
+          "selector": "div.file-type-dropdown-overlay:not([style*=\"display: none;\"]) div.file-type-options-scroll input.ant-checkbox-input[value*=\"CRA Form\"]",
+          "timeout": 5000,
+          "description": "等待CRA Form复选框渲染"
+        },
+        {
+          "type": "condition",
+          "description": "CRA Form是否已勾选（重跑时避免反向取消勾选）",
+          "condition": {
+            "type": "elementAttribute",
+            "selector": "div.file-type-dropdown-overlay:not([style*=\"display: none;\"]) div.file-type-options-scroll > div.file-type-options > div.file-type-group > div.group-options > div.option-item > label > span > input.ant-checkbox-input[value*=\"CRA Form\"]",
+            "attribute": "checked",
+            "match": "eq",
+            "value": true
+          },
+          "gotoTrue": "craCheckboxReady",
+          "gotoFalse": ""
+        },
+        {
+          "type": "click",
+          "selector": "div.file-type-dropdown-overlay:not([style*=\"display: none;\"]) div.file-type-options-scroll > div.file-type-options > div.file-type-group > div.group-options > div.option-item > label > span > input.ant-checkbox-input[value*=\"CRA Form\"]",
+          "description": "勾选CRA Form"
+        },
+        {
+          "id": "craCheckboxReady",
+          "type": "noop",
+          "description": "CRA Form已处于勾选状态"
+        },
+        {
+          "type": "click",
+          "selector": "div.file-type-dropdown-overlay:not([style*=\"display: none;\"]) > div.file-type-dropdown > div.file-type-footer > button",
+          "description": "确认文件类型"
+        },
+        {
+          "type": "wait",
+          "ms": 1000,
+          "description": "短暂等待"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.file-list-table div.ant-table-container table > tbody >tr:nth-of-type(2) button.select-file-type-btn",
+          "description": "点击Select File Type（HP Application Form为非OCR上传，默认排序在第2行；按类名定位第2处）"
+        },
+        {
+          "type": "waitFor",
+          "selector": "div.file-type-dropdown-overlay:not([style*=\"display: none;\"]) div.file-type-options-scroll input.ant-checkbox-input[value*=\"HP Application Form\"]",
+          "timeout": 5000,
+          "description": "等待HP Application Form复选框渲染"
+        },
+        {
+          "type": "condition",
+          "description": "HP Application Form是否已勾选（重跑时避免反向取消勾选）",
+          "condition": {
+            "type": "elementAttribute",
+            "selector": "div.file-type-dropdown-overlay:not([style*=\"display: none;\"]) div.file-type-options-scroll > div.file-type-options > div.file-type-group > div.group-options > div.option-item > label > span > input.ant-checkbox-input[value*=\"HP Application Form\"]",
+            "attribute": "checked",
+            "match": "eq",
+            "value": true
+          },
+          "gotoTrue": "hpAFCheckboxReady",
+          "gotoFalse": ""
+        },
+        {
+          "type": "click",
+          "selector": "div.file-type-dropdown-overlay:not([style*=\"display: none;\"]) div.file-type-options-scroll > div.file-type-options > div.file-type-group > div.group-options > div.option-item > label > span > input.ant-checkbox-input[value*=\"HP Application Form\"]",
+          "description": "勾选HP Application Form"
+        },
+        {
+          "id": "hpAFCheckboxReady",
+          "type": "noop",
+          "description": "HP Application Form已处于勾选状态"
+        },
+        {
+          "type": "click",
+          "selector": "div.file-type-dropdown-overlay:not([style*=\"display: none;\"]) > div.file-type-dropdown > div.file-type-footer > button",
+          "description": "确认文件类型"
+        },
+        {
+          "type": "wait",
+          "ms": 800,
+          "description": "短暂等待类型保存接口返回与下拉弹窗关闭"
+        },
+        {
+          "id": "refreshFileStatus",
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.filter-bar > div.filter-actions > button:nth-of-type(4)",
+          "description": "刷新文件状态（等待OCR识别出结果）"
+        },
+        {
+          "type": "wait",
+          "ms": 500,
+          "description": "短暂等待刷新接口返回（refreshFileStatus循环会继续检测）"
+        },
+        {
+          "type": "condition",
+          "description": "是否存在已启用的Quick Confirm按钮（仅OCR文件识别完成后会启用，非AI文件该按钮恒为禁用）",
+          "condition": {
+            "type": "elementExists",
+            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.file-list-table div.ant-table-container table > tbody > tr div.actions-cell button:has(span[class*=\"check-circle\"]):not([disabled])"
+          },
+          "gotoTrue": "clickQuickConfirm",
+          "gotoFalse": "refreshFileStatus"
+        },
+        {
+          "id": "clickQuickConfirm",
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.file-list-table div.ant-table-container table > tbody > tr div.actions-cell button:has(span[class*=\"check-circle\"]):not([disabled])",
+          "description": "点击Quick Confirm（按check-circle图标定位该按钮，不再依赖行序/按钮位置，避免误点预览）"
+        },
+        {
+          "type": "wait",
+          "ms": 2000,
+          "description": "等待确认接口与列表刷新"
+        },
+        {
+          "id": "refreshSubmitLoop",
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.filter-bar > div.filter-actions > button:nth-of-type(4)",
+          "description": "刷新文件状态（等待提交按钮可用）"
+        },
+        {
+          "type": "wait",
+          "ms": 2000,
+          "description": "等待"
+        },
+        {
+          "type": "condition",
+          "description": "Submit for Verification是否可用（unclassifiedCount=0且列表非空时才启用）",
+          "condition": {
+            "type": "elementExists",
+            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.file-list-footer-actions > button.submit-btn:not([disabled])"
+          },
+          "gotoTrue": "clickSubmitVerify",
+          "gotoFalse": "refreshSubmitLoop"
+        },
+        {
+          "id": "clickSubmitVerify",
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.file-list-footer-actions > button.submit-btn",
+          "description": "提交文件校验"
+        },
+        {
+          "type": "wait",
+          "ms": 3000,
+          "description": "等待质检接口返回（可能弹出Review Upload Issues）"
+        },
+        {
+          "type": "condition",
+          "description": "是否弹出Review Upload Issues质检弹窗（文件质量/缺失文件时出现，必须处理后流程才能继续）",
+          "condition": {
+            "type": "elementVisible",
+            "selector": "div.review-upload-issues-modal"
+          },
+          "gotoTrue": "handleQualityVoid",
+          "gotoFalse": "switchToValidationTab"
+        },
+        {
+          "id": "handleQualityVoid",
+          "type": "click",
+          "selector": "div.review-upload-issues-modal div.review-upload-issues-modal__footer button:nth-of-type(1)",
+          "description": "点击Submit Anyway继续提交"
+        },
+        {
+          "type": "wait",
+          "ms": 2500,
+          "description": "等待校验触发"
+        },
+        {
+          "id": "switchToValidationTab",
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.list-tabs > div.tab:nth-of-type(2)",
+          "description": "切换到校验结果tab"
+        },
+        {
+          "type": "wait",
+          "ms": 1500,
+          "description": "等待tab内容渲染"
+        },
+        {
+          "type": "waitFor",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results",
+          "timeout": 10000,
+          "description": "等待校验结果区域渲染"
+        },
+        {
+          "id": "refreshFileValidateResult",
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results > div.filter-bar > div.filter-actions > button:nth-of-type(4)",
+          "description": "刷新校验结果"
+        },
+        {
+          "type": "wait",
+          "ms": 2500,
+          "description": "等待校验结果加载"
+        },
+        {
+          "type": "condition",
+          "description": "校验结果表格是否已有数据行（空表/占位行说明结果未返回，需继续刷新）",
+          "condition": {
+            "type": "elementExists",
+            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results div.cv-results-table table > tbody span.cv-cell-wrap"
+          },
+          "gotoTrue": "cvRowsReady",
+          "gotoFalse": "refreshFileValidateResult"
+        },
+        {
+          "id": "cvRowsReady",
+          "type": "noop",
+          "description": "校验结果已有数据行"
+        },
+        {
+          "type": "condition",
+          "description": "是否仍有未出结果的行（无badge=识别/校验中；用cv-cell-wrap排除antd占位行/测量行）",
+          "condition": {
+            "type": "elementExists",
+            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results div.cv-results-table table > tbody tr:not(:has(span.issues-badge)):has(span.cv-cell-wrap)"
+          },
+          "gotoTrue": "refreshFileValidateResult",
+          "gotoFalse": ""
+        },
+        {
+          "type": "condition",
+          "description": "是否存在校验不通过的行（红色issues badge，需逐行确认，任意一行ok不能代表全部通过）",
+          "condition": {
+            "type": "elementExists",
+            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results div.cv-results-table table > tbody tr:has(span.issues-badge--error)"
+          },
+          "gotoTrue": "checkEditReady",
+          "gotoFalse": "closeFileModal"
+        },
+        {
+          "id": "checkEditReady",
+          "type": "condition",
+          "description": "问题行的编辑按钮是否可点（Validating/Recognizing时禁用，需继续刷新等待）",
+          "condition": {
+            "type": "elementExists",
+            "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results div.cv-results-table table > tbody tr:has(span.issues-badge--error) button.edit-btn:not([disabled])"
+          },
+          "gotoTrue": "clickEditBtn",
+          "gotoFalse": "refreshFileValidateResult"
+        },
+        {
+          "id": "clickEditBtn",
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results div.cv-results-table table > tbody tr:has(span.issues-badge--error) button.edit-btn:not([disabled])",
+          "description": "点击编辑（自动命中存在问题的行，不依赖行序）"
+        },
+        {
+          "type": "wait",
+          "ms": 2500,
+          "description": "等待详情弹窗与告警数据加载"
+        },
+        {
+          "type": "waitFor",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-content div.alert-list div.alert-card",
+          "timeout": 10000,
+          "description": "等待告警卡片渲染完成"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-content > div.left-panel > div.cv-left-panel-alerts div.alert-list > div.alert-card:nth-of-type(2) > div.alert-card-actions >.alert-action-trigger:nth-of-type(2)> button",
+          "description": "点击第1个Justification"
+        },
+        {
+          "type": "waitFor",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.justification-modal-content textarea",
+          "timeout": 10000,
+          "description": "等待justification弹窗渲染（避免动画竞态）"
+        },
+        {
+          "type": "fill",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.justification-modal-content textarea",
+          "value": "123",
+          "description": "填写justification1"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.ant-modal-footer > div.justification-modal-footer > button:nth-of-type(2)",
+          "description": "确认justification1"
+        },
+        {
+          "type": "wait",
+          "ms": 1200,
+          "description": "等待justification保存与告警列表刷新"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-content > div.left-panel > div.cv-left-panel-alerts div.alert-list > div.alert-card:nth-of-type(3) > div.alert-card-actions >.alert-action-trigger:nth-of-type(2)> button",
+          "description": "点击第2个Justification"
+        },
+        {
+          "type": "waitFor",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.justification-modal-content textarea",
+          "timeout": 10000,
+          "description": "等待justification弹窗渲染"
+        },
+        {
+          "type": "fill",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.justification-modal-content textarea",
+          "value": "123",
+          "description": "填写justification2"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.ant-modal-footer > div.justification-modal-footer > button:nth-of-type(2)",
+          "description": "确认justification2"
+        },
+        {
+          "type": "wait",
+          "ms": 1200,
+          "description": "等待justification保存与告警列表刷新"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-content > div.left-panel > div.cv-left-panel-alerts div.alert-list > div.alert-card:nth-of-type(4) > div.alert-card-actions >.alert-action-trigger:nth-of-type(2)> button",
+          "description": "点击第3个Justification"
+        },
+        {
+          "type": "waitFor",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.justification-modal-content textarea",
+          "timeout": 10000,
+          "description": "等待justification弹窗渲染"
+        },
+        {
+          "type": "fill",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.justification-modal-content textarea",
+          "value": "123",
+          "description": "填写justification3"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap.justification-modal:not([style*=\"display\"])) div.ant-modal-footer > div.justification-modal-footer > button:nth-of-type(2)",
+          "description": "确认justification3"
+        },
+        {
+          "type": "wait",
+          "ms": 1200,
+          "description": "等待justification保存与告警列表刷新"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-content > div.left-panel > div.cv-left-panel-alerts div.alert-list > div.alert-card:nth-of-type(1) > div.alert-card-actions > span.alert-action-trigger:nth-of-type(1) > button",
+          "description": "点击verifyAll"
+        },
+        {
+          "type": "wait",
+          "ms": 1500,
+          "description": "等待Verify All自动保存"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.detail-header > .header-left > span:nth-of-type(1)",
+          "description": "关闭编辑详情"
+        },
+        {
+          "type": "wait",
+          "ms": 1500,
+          "description": "等待详情关闭与列表刷新"
+        },
+        {
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) div.ocr-modal-content div.file-list-section > div.file-list-body > div.cross-validation-results > div.submit-bar > button.submit-all-btn",
+          "description": "提交校验"
+        },
+        {
+          "type": "wait",
+          "ms": 2000,
+          "description": "等待重新校验"
+        },
+        {
+          "type": "condition",
+          "description": "重新校验后回到结果刷新循环，直到全部通过",
+          "condition": {
+            "type": "alwaysTrue"
+          },
+          "gotoTrue": "refreshFileValidateResult",
+          "gotoFalse": ""
+        },
+        {
+          "id": "closeFileModal",
+          "type": "click",
+          "selector": "div.ant-modal-root[class*=\"css-\"]:has(div.ant-modal-wrap:not([style*=\"display\"])) > div.ocr-modal-fixed > div.ant-modal button.ant-modal-close",
+          "description": "关闭文件框"
+        }
+      ],
+      "bypass": false
+    },
+    {
+      "name": "19. 最终提交",
+      "actions": [
+        {
+          "type": "extract",
+          "selector": "#app > section > section > div > div > div.ant-tabs.ant-tabs-top.tabs-container > div.ant-tabs-nav > div > div > div.ant-tabs-tab.ant-tabs-tab-with-remove.ant-tabs-tab-active>div.ant-tabs-tab-btn > span > span",
+          "attribute": "textContent",
+          "variable": "orderNo",
+          "transform": "trim",
+          "failIfEmpty": true,
+          "description": "获取AppRefNo"
+        },
+        {
+          "type": "copy",
+          "value": "${orderNo}",
+          "description": "复制到剪贴板，粘贴到业务系统"
+        },
+        {
+          "type": "click",
+          "selector": "#app > section > section > main > div > div.layout-main > div > div.action-buttons > div.action-buttons-right > button:nth-child(4)",
+          "description": "点击submit"
+        },
+        {
+          "type": "click",
+          "selector": "div.file-integrity-modal-wrap  div.ant-modal-body > div.file-integrity-modal div.file-integrity-modal__actions button:nth-of-type(2)",
+          "description": "Proceed Anyway"
+        },
+        {
+          "type": "modal",
+          "title": "确认订单号",
+          "content": "订单号：${orderNo} 已复制，可直接粘贴",
+          "buttons": "ok",
+          "onCancel": "continue",
+          "copyButton": true,
+          "description": "展示订单号"
+        }
+      ],
+      "bypass": false
     }
   ]
 }

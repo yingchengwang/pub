@@ -1,6 +1,6 @@
 {
   "name": "sit2信贷申请流程",
-  "version": "45",
+  "version": "46",
   "enabled": true,
   "group": "新建订单",
   "order": 2,
@@ -27,7 +27,8 @@
     "branchManager": [
       "v_yingchengwang (v_yingchengwang)",
       "jenniwei (jenniwei)",
-      "shibozou (shibozou)"
+      "shibozou (shibozou)",
+      "##1"
     ],
     "maritalStatus": "Single",
     "race": "Malay",
@@ -89,7 +90,7 @@
       "actions": [
         {
           "type": "click",
-          "selector": "//*[@id=\"app\"]/section/section/main/div/div[1]/div/div[2]/div/div/form/div/div[13]/div/button[3]",
+          "selector": "#app > section > .layout-main-wrap > main > .std--list-page > div:nth-of-type(1)  form > div:last-of-type button:last-of-type ",
           "description": "点击 New Application 按钮"
         },
         {
