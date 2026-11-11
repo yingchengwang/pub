@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         表单工作流助手
 // @namespace    http://tampermonkey.net/
-// @version      3.0.39
+// @version      3.0.40
 // @description  支持多标签页、动态下拉框、弹框操作、Ant Design组件的表单自动填写
 // @author       wangyingcheng
 // @match        *://*/crediosweb/*
@@ -173,6 +173,19 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             font-size: 13px;
             background: var(--wf-surface);
+            transition: opacity 0.3s ease;
+        }
+
+        /* ========== 执行中半透明 ==========
+           工作流执行时整体降低不透明度，便于观察面板下方页面的实际执行情况；
+           鼠标悬停时恢复不透明，保证可读性与按钮操作。
+           目标透明度由设置面板控制，经 --wf-run-opacity 注入（见 settings.js）。 */
+        #workflow-panel.running {
+            opacity: var(--wf-run-opacity, 0.45);
+        }
+
+        #workflow-panel.running:hover {
+            opacity: 1;
         }
 
         #workflow-panel.minimized {
@@ -802,18 +815,18 @@
             opacity: 0.8;
         }
 
-        /* 缓存开关（卡片索引盒图标，仅上传动作）—— 点亮=缓存已启用；关闭时暗淡，参考手动开关样式 */
-        #workflow-panel .wf-toggle-cache {
+        /* 上传管理按钮（仅上传动作）—— 点击打开缓存/手动文件管理弹窗；绑定手动文件时点亮 */
+        #workflow-panel .wf-toggle-upload {
             width: 24px;
             height: 24px;
             color: var(--wf-text-muted);
             opacity: 0.5;
         }
-        #workflow-panel .wf-toggle-cache.active {
-            color: var(--wf-primary);
+        #workflow-panel .wf-toggle-upload.active {
+            color: var(--wf-warning-accent);
             opacity: 1;
         }
-        #workflow-panel .wf-toggle-cache:hover {
+        #workflow-panel .wf-toggle-upload:hover {
             opacity: 0.8;
         }
 
@@ -1957,6 +1970,66 @@
         }
     }
 
+    // ============================================
+    // 手动上传文件槽：用户在步骤列表通过 📎 按钮上传的本地文件，绑定到具体动作
+    // 执行时优先级：手动文件 > URL 缓存 > 云端拉取（见 actions.js 的 upload 执行器）
+    // ============================================
+    const MANUAL_FILES_KEY = 'workflow_manual_files';
+
+    function getManualFiles() {
+        return GM_getValue(MANUAL_FILES_KEY, {}) || {};
+    }
+
+    function saveManualFiles(files) {
+        GM_setValue(MANUAL_FILES_KEY, files);
+    }
+
+    /**
+     * 手动文件的槽位 key。
+     * 动作有 id 时用 id 绑定（编辑工作流增删动作不会移位），否则退回 step:action 坐标。
+     * 两种格式都带 `wf:${workflowId}:` 前缀，供删除工作流时按前缀批量清理。
+     */
+    function manualSlotKey(workflowId, action, stepIndex, actionIndex) {
+        const wf = workflowId || 'unknown';
+        if (action && action.id) return `wf:${wf}:id:${action.id}`;
+        return `wf:${wf}:s${stepIndex}:a${actionIndex}`;
+    }
+
+    function getManualFile(slotKey) {
+        return getManualFiles()[slotKey] || null;
+    }
+
+    // data: { name, type, size, data(base64), timestamp }
+    function setManualFile(slotKey, data) {
+        const files = getManualFiles();
+        files[slotKey] = data;
+        saveManualFiles(files);
+    }
+
+    // 清除单个槽位，返回是否确有清除
+    function clearManualFile(slotKey) {
+        const files = getManualFiles();
+        if (!files[slotKey]) return false;
+        delete files[slotKey];
+        saveManualFiles(files);
+        return true;
+    }
+
+    // 删除工作流时清理其全部手动文件（含 id 绑定与坐标绑定的槽位），返回清理数量
+    function clearManualFilesByWorkflow(workflowId) {
+        const prefix = `wf:${workflowId}:`;
+        const files = getManualFiles();
+        let count = 0;
+        Object.keys(files).forEach(key => {
+            if (key.startsWith(prefix)) {
+                delete files[key];
+                count++;
+            }
+        });
+        if (count) saveManualFiles(files);
+        return count;
+    }
+
     // 获取动作的值（优先使用运行时修改的值）
     function getActionValue(action, stepIdx, actionIdx) {
         const si = currentStepIndex;
@@ -1996,12 +2069,23 @@
     // 用于强制重新拉取（如云端文件已更新），避免缓存一直不变。
     const UPLOAD_CACHE_KEY = 'workflow_upload_cache';
 
+    // 导出供上传管理弹窗展示缓存状态
     function getUploadCache() {
         return GM_getValue(UPLOAD_CACHE_KEY, {}) || {};
     }
 
     function saveUploadCache(cache) {
         GM_setValue(UPLOAD_CACHE_KEY, cache);
+    }
+
+    // 清除指定 URL 的上传缓存（供上传管理弹窗调用），返回是否确有清除
+    function clearUploadCacheForUrl(url) {
+        if (!url) return false;
+        const cache = getUploadCache();
+        if (!cache[url]) return false;
+        delete cache[url];
+        saveUploadCache(cache);
+        return true;
     }
 
     // ArrayBuffer → base64 字符串（分块拼接，避免超大文件一次性 String.fromCharCode 栈溢出）
@@ -2765,45 +2849,54 @@
             addLog(`✓ 下载文件: ${filename}（${(content.length / 1024).toFixed(1)} KB）`, 'success');
         },
 
-        // 从云端 URL 拉取文件并注入页面的 <input type="file">
+        // 从云端 URL 拉取文件，或使用用户手动上传的文件，注入页面的 <input type="file">
         // 原理：网页上传底层都是 input[type=file]，系统级文件选择对话框无法被脚本控制，
         // 故绕过对话框，用 DataTransfer 把 File 直接塞进 input.files 再触发 change，
         // 框架（Ant/Element/原生）会照常把文件传到业务服务器。
+        // 文件来源优先级：手动上传文件（📎，见 file-store.js）> URL 缓存 > 云端拉取。
         // 缓存：按 URL 缓存文件二进制，避免同一文件重复下载。cache 字段控制（默认 true），
-        // 设为 false 时本次不读缓存并清除该 URL 的旧缓存，用于强制重新拉取。
-        upload: async function(action, variables) {
+        // 设为 false 时本次不读缓存，并清除该 URL 的旧缓存与手动上传的文件，用于强制重新拉取。
+        upload: async function(action, variables, config, stepIndex, actionIndex) {
             const selector = replaceVariables(action.selector, variables);
-            const url = replaceVariables(action.url, variables);
-            const filename = replaceVariables(action.filename || 'upload.bin', variables);
-            const mimeType = action.mimeType ? replaceVariables(action.mimeType, variables) : '';
+            // url 可选：有手动上传文件时可留空
+            const url = action.url ? replaceVariables(action.url, variables) : '';
+            let filename = replaceVariables(action.filename || '', variables);
+            let mimeType = action.mimeType ? replaceVariables(action.mimeType, variables) : '';
             const waitAfterUpload = action.waitAfterUpload || 2000;
             const index = action.index || 0;
-            // 缓存控制：默认启用，显式设为 false 时禁用并清除该 URL 的旧缓存
+            // 缓存控制：默认启用，显式设为 false 时禁用并清除该 URL 的旧缓存（手动文件独立，在管理弹窗中维护）
             const useCache = action.cache !== false;
+            const slotKey = manualSlotKey(config?.id, action, stepIndex, actionIndex);
 
             let arrayBuffer;
 
-            if (useCache) {
-                // 尝试命中缓存
-                const cached = getUploadCache()[url];
-                if (cached) {
-                    addLog(`→ 命中缓存: ${url}`, 'info');
-                    arrayBuffer = base64ToArrayBuffer(cached.data);
-                }
-            } else {
-                // cache:false —— 清除该 URL 的缓存，强制重新拉取，避免缓存一直不变
+            // 手动上传文件：独立于缓存开关，存在即优先使用
+            const manual = getManualFile(slotKey);
+
+            if (!useCache) {
+                // cache:false —— 清除该 URL 的缓存，下次执行强制重新拉取
                 const cache = getUploadCache();
-                if (cache[url]) {
+                if (url && cache[url]) {
                     delete cache[url];
                     saveUploadCache(cache);
                     addLog(`→ 已清空缓存: ${url}`, 'info');
-                } else {
-                    addLog(`→ 未启用缓存: ${url}`, 'info');
                 }
+            }
+
+            if (manual) {
+                // 手动文件优先：直接用本地内容，完全不碰 URL 缓存与网络
+                addLog(`→ 使用手动上传文件: ${manual.name}（${((manual.size || 0) / 1024).toFixed(1)} KB）`, 'info');
+                arrayBuffer = base64ToArrayBuffer(manual.data);
+                // 未显式配置时回退手动文件的属性：文件名用原名，MIME 用文件真实类型
+                if (!filename) filename = manual.name;
+                if (!mimeType) mimeType = manual.type || '';
             }
 
             // 缓存未命中或被禁用时，从云端请求
             if (!arrayBuffer) {
+                if (!url) {
+                    throw new Error('上传动作未配置云端 URL，且没有手动上传文件（可在步骤列表点击 📎 上传本地文件）');
+                }
                 // 1. 用 GM_xmlhttpRequest 获取二进制（可跨域、绕过 CSP；@connect 需覆盖目标域名）
                 addLog(`→ 从云端请求文件: ${url}`, 'info');
                 arrayBuffer = await new Promise((resolve, reject) => {
@@ -2905,7 +2998,8 @@
 
         const executor = actionExecutors[effectiveAction.type];
         if (executor) {
-            await executor(effectiveAction, variables, config);
+            // 透传 stepIndex/actionIndex：upload 等执行器需要按动作定位手动上传文件槽
+            await executor(effectiveAction, variables, config, stepIndex, actionIndex);
         } else {
             addLog(`✗ 未知动作类型: ${effectiveAction.type}`, 'error');
         }
@@ -3384,6 +3478,8 @@
         const name = workflowList[idx].name;
         workflowList.splice(idx, 1);
         clearWorkflowOverrides(id);
+        // 顺带清理该工作流绑定的手动上传文件槽，避免残留
+        const cleanedFiles = clearManualFilesByWorkflow(id);
 
         if (activeWorkflowId === id) {
             saveWorkflowList();
@@ -3393,6 +3489,9 @@
             updateWorkflowSelect();
         }
         addLog(`已删除工作流: ${name}`, 'info');
+        if (cleanedFiles > 0) {
+            addLog(`已清理 ${cleanedFiles} 个手动上传文件`, 'info');
+        }
     }
 
     function updateWorkflowSelect() {
@@ -3453,8 +3552,12 @@
      * 匹配逻辑：URL 包含所有 match 关键词，且不包含任何 exclude 关键词，则视为命中。
      * 多条规则满足其一即命中。
      * 按 workflowList 顺序取第一个命中的工作流，自动切换。
+     *
+     * @param {boolean} silent 静默模式：仅记录日志、不弹 toast。
+     *   页面加载时的自动匹配每次刷新都会触发，toast 会打扰用户，故静默；
+     *   手动点击面板 ⚡ 按钮等显式触发仍弹 toast。
      */
-    function autoMatchWorkflow() {
+    function autoMatchWorkflow(silent = false) {
         const url = window.location.href;
         const matched = workflowList.find(wf => {
             if (!wf.urlMatchers || !Array.isArray(wf.urlMatchers) || wf.urlMatchers.length === 0) {
@@ -3470,15 +3573,27 @@
         });
 
         if (!matched) {
-            showToast('未找到匹配当前页面的工作流', 'warning');
+            if (silent) {
+                addLog(`自动匹配：未找到匹配当前页面的工作流`, 'info');
+            } else {
+                showToast('未找到匹配当前页面的工作流', 'warning');
+            }
             return;
         }
         if (matched.id === activeWorkflowId) {
-            showToast(`当前已是匹配的工作流：${matched.name}`, 'info');
+            if (silent) {
+                addLog(`自动匹配：当前已是匹配的工作流（${matched.name}）`, 'info');
+            } else {
+                showToast(`当前已是匹配的工作流：${matched.name}`, 'info');
+            }
             return;
         }
         switchWorkflow(matched.id);
-        showToast(`已自动匹配：${matched.name}`, 'success');
+        if (silent) {
+            addLog(`自动匹配：已切换到工作流 ${matched.name}`, 'success');
+        } else {
+            showToast(`已自动匹配：${matched.name}`, 'success');
+        }
     }
 
     // updateUI 由外部注入
@@ -3757,12 +3872,14 @@
         if (!wc.execution) wc.execution = { stepDelay: 500, onError: 'continue' };
         if (!wc.steps) wc.steps = [];
         if (!wc.variables) wc.variables = {};
+        if (!Array.isArray(wc.urlMatchers)) wc.urlMatchers = [];
         if (!wc.enabled) wc.enabled = true;
 
         let activeTab = initialTab;
 
         const TABS = [
             { id: 'info', label: '📋 基本信息' },
+            { id: 'urlmatch', label: '🔗 URL匹配' },
             { id: 'variables', label: '🔧 变量管理' },
             { id: 'execution', label: '⚙️ 执行管理' },
             { id: 'steps', label: '🎯 步骤流程' },
@@ -3811,6 +3928,7 @@
         function renderContent() {
             const content = document.getElementById('ve-content');
             if (activeTab === 'info') renderInfoPanel(content);
+            else if (activeTab === 'urlmatch') renderUrlMatchPanel(content);
             else if (activeTab === 'variables') renderVariablesPanel(content);
             else if (activeTab === 'execution') renderExecutionPanel(content);
             else if (activeTab === 'steps') renderStepsPanel(content);
@@ -3845,6 +3963,133 @@
             container.querySelector('#ve-order').oninput = (e) => { wc.order = Number(e.target.value); };
             container.querySelector('#ve-enabled').onchange = (e) => { wc.enabled = e.target.checked; };
             container.querySelector('#ve-description').oninput = (e) => { wc.description = e.target.value; };
+        }
+
+        // URL 匹配管理 - 编辑 urlMatchers 规则（供 ⚡ 自动匹配与「执行完毕后自动匹配」使用）
+        // 命中判定与 workflow-manager.js 的 autoMatchWorkflow 保持同一套语义
+        const escAttr = (v) => escapeHtml(String(v ?? '')).replace(/"/g, '&quot;');
+
+        function urlRuleHits(rule, url) {
+            const matchKeywords = Array.isArray(rule.match) ? rule.match : [];
+            const excludeKeywords = Array.isArray(rule.exclude) ? rule.exclude : [];
+            return matchKeywords.every(kw => url.includes(kw)) && !excludeKeywords.some(kw => url.includes(kw));
+        }
+
+        function renderUrlMatchPanel(container) {
+            removeVarRefTooltip();
+            const rules = wc.urlMatchers;
+            const currentUrl = window.location.href;
+            const hitCount = rules.filter(r => urlRuleHits(r, currentUrl)).length;
+
+            const keywordRows = (ri, list) => {
+                const arr = rules[ri][list] || [];
+                if (!arr.length) return '<div style="font-size:11px;color:var(--wf-text-faint);padding:2px 0 6px;">（空）</div>';
+                return arr.map((kw, ki) => `
+                <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+                    <input type="text" class="ve-kw-input" data-rule="${ri}" data-list="${list}" data-idx="${ki}" value="${escAttr(kw)}" style="${S.input}font-family:Consolas,monospace;font-size:12px;" placeholder="关键词">
+                    <button class="ve-kw-del" data-rule="${ri}" data-list="${list}" data-idx="${ki}" style="width:26px;height:30px;border:none;background:var(--wf-error-light);color:var(--wf-error);border-radius:var(--wf-radius-md);cursor:pointer;font-size:12px;flex-shrink:0;">✕</button>
+                </div>`).join('');
+            };
+
+            container.innerHTML = `
+        <div style="flex:1;padding:24px;overflow-y:auto;background:var(--wf-surface-muted);">
+            <div style="max-width:640px;margin:0 auto;">
+                <div style="${S.card}background:var(--wf-primary-light);border-color:var(--wf-primary-border-light);">
+                    <div style="font-size:13px;font-weight:600;color:var(--wf-primary-darker);margin-bottom:6px;">匹配逻辑</div>
+                    <ul style="margin:0;padding-left:18px;font-size:12px;color:var(--wf-text-secondary);line-height:1.7;">
+                        <li>每条规则：URL <strong>包含所有匹配关键词</strong>，且<strong>不包含任何排除关键词</strong>，规则命中</li>
+                        <li>多条规则之间「或」：任一规则命中即视为本工作流命中</li>
+                        <li>⚡ 自动匹配会切换到<strong>列表顺序最前</strong>的命中工作流（多工作流都命中时按列表顺序）</li>
+                    </ul>
+                    <div style="margin-top:10px;padding:8px 10px;background:var(--wf-surface);border-radius:var(--wf-radius-md);font-size:11px;font-family:Consolas,monospace;color:var(--wf-text-muted);word-break:break-all;">${escapeHtml(currentUrl)}</div>
+                    <div style="margin-top:8px;font-size:12px;font-weight:600;color:${hitCount ? 'var(--wf-success)' : 'var(--wf-text-faint)'};">
+                        ${hitCount ? `✓ 当前页面命中本工作流（${hitCount} 条规则）` : '✗ 当前页面未命中本工作流'}
+                    </div>
+                </div>
+
+                <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 12px;">
+                    <h3 style="font-size:14px;font-weight:600;color:var(--wf-text-heading);">匹配规则 (${rules.length})</h3>
+                    <button id="ve-rule-add" style="${S.btn}">+ 添加规则</button>
+                </div>
+                ${rules.length === 0 ? '<div style="text-align:center;padding:40px;color:var(--wf-text-faint);font-size:12px;background:var(--wf-surface);border:1px dashed var(--wf-border-strong);border-radius:var(--wf-radius-lg);">暂无规则，点击上方按钮添加</div>' : ''}
+                ${rules.map((rule, ri) => {
+                    const hit = urlRuleHits(rule, currentUrl);
+                    // 匹配关键词全空时，引擎语义下该规则会命中任意 URL（url.includes('') 恒真），显式提醒
+                    const matchesAnything = !(rule.match || []).some(kw => kw && kw.trim());
+                    return `
+                    <div style="${S.card}">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                            <span style="font-size:13px;font-weight:600;color:var(--wf-text-heading);">规则 ${ri + 1}</span>
+                            <span style="padding:2px 8px;border-radius:var(--wf-radius-pill);font-size:11px;${hit ? 'background:var(--wf-success-light);color:var(--wf-success);border:1px solid var(--wf-success-border);' : 'background:var(--wf-surface-muted);color:var(--wf-text-faint);border:1px solid var(--wf-border);'}">${hit ? '✓ 命中当前页面' : '未命中'}</span>
+                            ${matchesAnything ? '<span style="padding:2px 8px;border-radius:var(--wf-radius-pill);font-size:11px;background:var(--wf-warning-light);color:var(--wf-warning);border:1px solid var(--wf-warning-border);" title="匹配关键词为空的规则会命中任意 URL">⚠ 命中任意URL</span>' : ''}
+                            <span style="flex:1;"></span>
+                            <button class="ve-rule-del" data-rule="${ri}" style="padding:5px 10px;border:none;background:var(--wf-error-light);color:var(--wf-error);border-radius:var(--wf-radius-md);cursor:pointer;font-size:12px;">删除规则</button>
+                        </div>
+                        <div style="margin-bottom:10px;">
+                            <label style="${S.label}">匹配关键词（URL 须<strong>全部包含</strong>）</label>
+                            ${keywordRows(ri, 'match')}
+                            <button class="ve-kw-add" data-rule="${ri}" data-list="match" style="padding:3px 10px;border:1px dashed var(--wf-border-strong);background:transparent;border-radius:var(--wf-radius-sm);font-size:11px;cursor:pointer;color:var(--wf-text-muted);">+ 关键词</button>
+                        </div>
+                        <div>
+                            <label style="${S.label}">排除关键词（URL 包含<strong>任一</strong>则本规则不命中，可空）</label>
+                            ${keywordRows(ri, 'exclude')}
+                            <button class="ve-kw-add" data-rule="${ri}" data-list="exclude" style="padding:3px 10px;border:1px dashed var(--wf-border-strong);background:transparent;border-radius:var(--wf-radius-sm);font-size:11px;cursor:pointer;color:var(--wf-text-muted);">+ 关键词</button>
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>
+        </div>`;
+
+            // 定位新关键词输入框并聚焦
+            function focusKw(ri, list, ki) {
+                const el = container.querySelector(`.ve-kw-input[data-rule="${ri}"][data-list="${list}"][data-idx="${ki}"]`);
+                if (el) { el.focus(); el.select(); }
+            }
+
+            container.querySelector('#ve-rule-add').onclick = () => {
+                rules.push({ match: [''], exclude: [] });
+                renderUrlMatchPanel(container);
+                focusKw(rules.length - 1, 'match', 0);
+            };
+
+            container.querySelectorAll('.ve-rule-del').forEach(btn => {
+                btn.onclick = () => {
+                    rules.splice(parseInt(btn.dataset.rule), 1);
+                    renderUrlMatchPanel(container);
+                };
+            });
+
+            container.querySelectorAll('.ve-kw-add').forEach(btn => {
+                btn.onclick = () => {
+                    const ri = parseInt(btn.dataset.rule);
+                    const list = btn.dataset.list;
+                    if (!Array.isArray(rules[ri][list])) rules[ri][list] = [];
+                    rules[ri][list].push('');
+                    renderUrlMatchPanel(container);
+                    focusKw(ri, list, rules[ri][list].length - 1);
+                };
+            });
+
+            container.querySelectorAll('.ve-kw-del').forEach(btn => {
+                btn.onclick = () => {
+                    const ri = parseInt(btn.dataset.rule);
+                    const list = btn.dataset.list;
+                    rules[ri][list].splice(parseInt(btn.dataset.idx), 1);
+                    renderUrlMatchPanel(container);
+                };
+            });
+
+            container.querySelectorAll('.ve-kw-input').forEach(input => {
+                const ri = parseInt(input.dataset.rule);
+                const list = input.dataset.list;
+                const ki = parseInt(input.dataset.idx);
+                input.oninput = () => { rules[ri][list][ki] = input.value; };
+                // 失焦时清理空关键词并刷新命中状态：空字符串会被 url.includes('') 恒真命中，留在数据里有隐患
+                input.onchange = () => {
+                    if (!input.value.trim()) rules[ri][list].splice(ki, 1);
+                    renderUrlMatchPanel(container);
+                };
+            });
         }
 
         // 统计每个变量在工作流中被引用的位置（按 action 去重）
@@ -4115,20 +4360,168 @@
             }
         }
 
-        // 步骤流程 - 已移除
+        // 步骤流程 - 按主面板步骤列表样式展示，支持单动作 JSON 编辑
+        // 默认折叠所有步骤的动作，手动展开的状态跨重渲染保留（编辑 JSON 写回后会重渲染列表）
+        const veExpandedSteps = new Set();
+
+        function actionDescOf(action) {
+            const type = action.type || 'unknown';
+            return action.description || ACTION_TYPE_LABELS[type] || type;
+        }
+
+        // 动作的摘要行：选择器 / 核心参数，方便不改 JSON 也能看清动作在做什么
+        function actionMetaOf(action) {
+            const type = action.type;
+            if (action.selector) return action.selector;
+            if (type === 'wait') return `${action.ms || 1000}ms`;
+            if (type === 'urlReplace' && action.find) return `${action.find} → ${action.replace || ''}`;
+            if (type === 'setVariable') return `${action.variable || ''} ${action.op || 'set'} ${action.value ?? ''}`;
+            if (type === 'extract') return `写入变量 ${action.variable || ''}`;
+            if (type === 'download') return action.filename || '';
+            if (type === 'upload') return action.url || '';
+            if (type === 'modal') return action.title || '';
+            if (type === 'custom' && action.code) return String(action.code).substring(0, 80);
+            return '';
+        }
+
         function renderStepsPanel(container) {
+            removeVarRefTooltip();
+            const steps = wc.steps || [];
+            if (!steps.length) {
+                container.innerHTML = `
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;background:var(--wf-surface-muted);">
+                <div style="text-align:center;color:var(--wf-text-faint);">
+                    <div style="font-size:48px;margin-bottom:16px;">🎯</div>
+                    <div style="font-size:14px;">暂无步骤</div>
+                    <div style="font-size:12px;margin-top:8px;">请使用"高级模式"添加步骤</div>
+                </div>
+            </div>`;
+                return;
+            }
+
+            const stepsHtml = steps.map((step, si) => {
+                const actions = step.actions || [];
+                const collapsed = !veExpandedSteps.has(si);
+                const actionsHtml = actions.map((action, ai) => {
+                    const type = action.type || 'unknown';
+                    const meta = actionMetaOf(action);
+                    // 有 id 的动作可作为 goto 跳转目标，展示出来便于编写跳转
+                    const idBadge = action.id
+                        ? `<span style="font-size:10px;color:var(--wf-text-faint);font-family:Consolas,monospace;flex-shrink:0;" title="动作ID（goto 跳转目标）">#${escapeHtml(action.id)}</span>`
+                        : '';
+                    return `
+                    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--wf-surface);border:1px solid var(--wf-border-muted);border-left:3px solid var(--wf-primary-border-light);border-radius:var(--wf-radius-md);">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-size:12px;font-weight:500;color:var(--wf-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(actionDescOf(action))}</div>
+                            ${meta ? `<div style="font-size:10px;color:var(--wf-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Consolas,monospace;margin-top:1px;">${escapeHtml(meta)}</div>` : ''}
+                        </div>
+                        ${idBadge}
+                        <span style="font-size:10px;font-weight:600;color:var(--wf-text-muted);background:var(--wf-surface-muted);border:1px solid var(--wf-border);padding:1px 6px;border-radius:var(--wf-radius-sm);text-transform:uppercase;flex-shrink:0;">${escapeHtml(type)}</span>
+                        <button class="ve-action-json-edit" data-step="${si}" data-action="${ai}" style="padding:3px 8px;border:1px solid var(--wf-warning-border);background:var(--wf-warning-light);color:var(--wf-warning);border-radius:var(--wf-radius-sm);font-size:11px;cursor:pointer;flex-shrink:0;white-space:nowrap;">✏ JSON</button>
+                    </div>`;
+                }).join('') || '<div style="font-size:11px;color:var(--wf-text-faint);padding:4px 2px;">（无动作）</div>';
+
+                return `
+                <div class="ve-step-item" data-step="${si}">
+                    <div class="ve-step-header" style="display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;user-select:none;">
+                        <span style="width:18px;height:18px;border-radius:var(--wf-radius-circle);background:var(--wf-primary);color:white;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${si + 1}</span>
+                        <span style="font-size:13px;font-weight:600;color:var(--wf-text-heading);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(step.name || `步骤 ${si + 1}`)}</span>
+                        <span style="font-size:11px;color:var(--wf-text-faint);flex-shrink:0;">${actions.length} 个动作</span>
+                        <span class="ve-step-arrow" style="font-size:10px;color:var(--wf-text-muted);transition:transform 0.2s;flex-shrink:0;${collapsed ? 'transform:rotate(-90deg);' : ''}">▼</span>
+                    </div>
+                    <div class="ve-actions" style="padding:2px 12px 10px 36px;display:${collapsed ? 'none' : 'flex'};flex-direction:column;gap:4px;">
+                        ${actionsHtml}
+                    </div>
+                </div>`;
+            }).join('');
+
             container.innerHTML = `
-        <div style="flex:1;padding:40px;display:flex;align-items:center;justify-content:center;">
-            <div style="text-align:center;color:var(--wf-text-faint);">
-                <div style="font-size:48px;margin-bottom:16px;">🚧</div>
-                <div style="font-size:14px;">步骤流程编辑功能已移除</div>
-                <div style="font-size:12px;margin-top:8px;">请使用"高级模式"编辑工作流配置</div>
-                <button id="ve-to-advanced-btn" style="margin-top:16px;padding:8px 16px;border:none;background:var(--wf-primary);color:white;border-radius:var(--wf-radius-md);font-size:12px;cursor:pointer;">切换到高级模式</button>
+        <div style="flex:1;overflow-y:auto;background:var(--wf-surface-muted);padding:16px 24px;">
+            <div style="max-width:720px;margin:0 auto;">
+                <div style="font-size:11px;color:var(--wf-text-muted);margin-bottom:12px;">步骤按执行顺序展示；点击「✏ JSON」可单独编辑该动作，编辑结果在点击底部「💾 保存」后生效。</div>
+                ${stepsHtml}
             </div>
         </div>`;
-            container.querySelector('#ve-to-advanced-btn').onclick = () => {
-                document.getElementById('ve-advanced-btn').click();
+
+            // 步骤折叠/展开
+            container.querySelectorAll('.ve-step-header').forEach(header => {
+                header.onclick = () => {
+                    const si = parseInt(header.closest('.ve-step-item').dataset.step);
+                    if (veExpandedSteps.has(si)) veExpandedSteps.delete(si);
+                    else veExpandedSteps.add(si);
+                    renderStepsPanel(container);
+                };
+            });
+
+            // 动作 JSON 编辑
+            container.querySelectorAll('.ve-action-json-edit').forEach(btn => {
+                btn.onclick = () => {
+                    openActionJsonEditor(parseInt(btn.dataset.step), parseInt(btn.dataset.action));
+                };
+            });
+        }
+
+        // 单动作 JSON 编辑弹窗（叠在可视化编辑器之上，z-index 更高）
+        function openActionJsonEditor(stepIndex, actionIndex) {
+            const existing = document.getElementById('ve-action-json-modal');
+            if (existing) existing.remove();
+
+            const step = wc.steps[stepIndex];
+            const action = step.actions[actionIndex];
+
+            const jsonModal = document.createElement('div');
+            jsonModal.id = 've-action-json-modal';
+            jsonModal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100005;display:flex;align-items:center;justify-content:center;background:var(--wf-overlay);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+            jsonModal.innerHTML = `
+        <div style="background:var(--wf-surface);border-radius:var(--wf-radius-xl);box-shadow:0 20px 60px rgba(0,0,0,0.25);width:92%;max-width:680px;max-height:85vh;display:flex;flex-direction:column;padding:20px 24px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <div style="font-size:14px;font-weight:600;color:var(--wf-text);">✏ 编辑动作 JSON
+                    <span style="font-size:11px;font-weight:400;color:var(--wf-text-muted);">— [${escapeHtml(step.name || `步骤 ${stepIndex + 1}`)}] 第 ${actionIndex + 1}/${step.actions.length} 个动作</span>
+                </div>
+                <button id="ve-aj-close" style="width:24px;height:24px;border:none;background:var(--wf-surface-muted);border-radius:var(--wf-radius-md);cursor:pointer;font-size:14px;color:var(--wf-text-muted);display:flex;align-items:center;justify-content:center;">×</button>
+            </div>
+            <textarea id="ve-aj-text" spellcheck="false" style="flex:1;min-height:300px;width:100%;resize:vertical;padding:10px 12px;border:1px solid var(--wf-border);border-radius:var(--wf-radius-md);font-family:Consolas,Monaco,'Courier New',monospace;font-size:12px;line-height:1.5;color:var(--wf-text);background:var(--wf-surface-2);">${escapeHtml(JSON.stringify(action, null, 2))}</textarea>
+            <div style="font-size:11px;color:var(--wf-text-muted);margin-top:8px;line-height:1.5;">
+                💡 直接修改该动作的 JSON（type 字段必填）。写回后仍需点击编辑器底部「💾 保存」才会持久化到工作流配置。
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+                <button id="ve-aj-cancel" style="${S.btn}">取消</button>
+                <button id="ve-aj-save" style="${S.btnPrimary}">✔ 写回</button>
+            </div>
+        </div>`;
+            document.body.appendChild(jsonModal);
+
+            const textarea = jsonModal.querySelector('#ve-aj-text');
+            const close = () => jsonModal.remove();
+            jsonModal.querySelector('#ve-aj-close').onclick = close;
+            jsonModal.querySelector('#ve-aj-cancel').onclick = close;
+            jsonModal.onclick = (e) => { if (e.target === jsonModal) close(); };
+            // Escape 只关闭本弹窗（jsonModal 是独立子树，不会冒泡触发可视化编辑器的 Escape）
+            jsonModal.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+
+            jsonModal.querySelector('#ve-aj-save').onclick = () => {
+                let parsed;
+                try {
+                    parsed = JSON.parse(textarea.value);
+                } catch (e) {
+                    showToast(`JSON 解析失败: ${e.message}`, 'error');
+                    return;
+                }
+                if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+                    showToast('内容必须是一个 JSON 对象 { ... }', 'error');
+                    return;
+                }
+                if (!parsed.type || typeof parsed.type !== 'string') {
+                    showToast('动作缺少有效的 type 字段', 'error');
+                    return;
+                }
+                wc.steps[stepIndex].actions[actionIndex] = parsed;
+                close();
+                renderStepsPanel(document.getElementById('ve-content'));
+                showToast('动作已写回，记得点击底部「💾 保存」', 'success');
             };
+
+            textarea.focus();
         }
 
         // 初始渲染
@@ -4557,10 +4950,64 @@
     const checkWorkflowUpdate = checkWorkflowUpdateCore;
 
     // ============================================
+    // 小助手设置：内存缓存 + GM 持久化
+    // 目前支持：transparentRun（执行时面板半透明）、runOpacity（半透明透明度）、
+    //           autoMatchOnLoad（页面刷新时空闲自动匹配工作流）
+    // ============================================
+    const SETTINGS_KEY = 'wf_panel_settings';
+
+    const DEFAULT_SETTINGS = {
+        transparentRun: true,   // 执行期间面板半透明（默认开启，保持既有行为）
+        runOpacity: 0.45,       // 半透明的目标透明度
+        autoMatchOnLoad: true   // 页面刷新时空闲自动匹配工作流（默认开启）
+    };
+
+    let panelSettings = Object.assign({}, DEFAULT_SETTINGS);
+
+    // 预览模式：设置弹窗打开期间，无视执行状态直接展示半透明效果，方便调整滑块时实时预览
+    let previewMode = false;
+
+    function loadPanelSettings() {
+        try {
+            const saved = GM_getValue(SETTINGS_KEY);
+            if (saved && typeof saved === 'object') {
+                panelSettings = Object.assign({}, DEFAULT_SETTINGS, saved);
+            }
+        } catch (e) {
+            console.error('[Settings] 加载设置失败:', e);
+        }
+        // 兜底：透明度限制在合理区间，脏数据回落默认值
+        if (!isFinite(panelSettings.runOpacity)) panelSettings.runOpacity = DEFAULT_SETTINGS.runOpacity;
+        panelSettings.runOpacity = Math.min(0.9, Math.max(0.3, panelSettings.runOpacity));
+        if (typeof panelSettings.transparentRun !== 'boolean') panelSettings.transparentRun = DEFAULT_SETTINGS.transparentRun;
+        if (typeof panelSettings.autoMatchOnLoad !== 'boolean') panelSettings.autoMatchOnLoad = DEFAULT_SETTINGS.autoMatchOnLoad;
+        applySettingsToDom();
+        return panelSettings;
+    }
+
+    function setPanelSetting(key, value) {
+        panelSettings = Object.assign({}, panelSettings, { [key]: value });
+        GM_setValue(SETTINGS_KEY, panelSettings);
+        applySettingsToDom();
+    }
+
+    function setPreviewMode(v) {
+        previewMode = v;
+    }
+
+    // 透明度写入 CSS 变量，供 #workflow-panel.running 的 opacity 引用（见 styles.js）
+    function applySettingsToDom() {
+        document.documentElement.style.setProperty('--wf-run-opacity', String(panelSettings.runOpacity));
+    }
+
+    // ============================================
     // UI 创建
     // ============================================
     function createUI() {
         if (document.getElementById('workflow-panel')) return;
+
+        // 加载助手设置（透明运行等）并同步 CSS 变量，需在首次 updateUI 前完成
+        loadPanelSettings();
 
         // 加载多工作流配置
         try {
@@ -4650,6 +5097,58 @@
 
         document.body.appendChild(floatingBtn);
 
+        // 手动上传文件选择器（upload 动作 📎 按钮触发），先移除旧的避免事件累积
+        const oldFilePicker = document.getElementById('wf-manual-file-input');
+        if (oldFilePicker) oldFilePicker.remove();
+        const manualFilePicker = document.createElement('input');
+        manualFilePicker.id = 'wf-manual-file-input';
+        manualFilePicker.type = 'file';
+        manualFilePicker.style.display = 'none';
+        document.body.appendChild(manualFilePicker);
+
+        // 本地文件 → base64（dataURL 去掉前缀）
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+                reader.onerror = () => reject(new Error('读取文件失败'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        manualFilePicker.onchange = async () => {
+            const file = manualFilePicker.files && manualFilePicker.files[0];
+            const stepIndex = parseInt(manualFilePicker.dataset.fileStep);
+            const actionIndex = parseInt(manualFilePicker.dataset.fileAction);
+            if (!file || isNaN(stepIndex) || isNaN(actionIndex)) return;
+            const action = workflow.steps[stepIndex]?.actions[actionIndex];
+            if (!action) return;
+
+            if (file.size > 10 * 1024 * 1024) {
+                showToast(`文件较大（${(file.size / 1048576).toFixed(1)} MB），可能超出脚本存储限制`, 'warning');
+            }
+            try {
+                const data = await readFileAsBase64(file);
+                const slotKey = manualSlotKey(activeWorkflowId, action, stepIndex, actionIndex);
+                setManualFile(slotKey, {
+                    name: file.name,
+                    type: file.type || '',
+                    size: file.size,
+                    data,
+                    timestamp: Date.now()
+                });
+                addLog(`📎 已保存手动文件: ${file.name}（${(file.size / 1024).toFixed(1)} KB）`, 'success');
+                showToast(`已保存手动文件: ${file.name}`, 'success');
+                updateUI();
+                // 若上传管理弹窗正打开，刷新内容以显示新绑定的文件
+                const manageModal = document.getElementById('upload-manage-modal');
+                if (manageModal && manageModal.style.display === 'flex') renderUploadManageModal();
+            } catch (err) {
+                addLog(`✗ 保存手动文件失败: ${err.message}`, 'error');
+                showToast(`保存失败: ${err.message}`, 'error');
+            }
+        };
+
         // 主面板
         const panel = document.createElement('div');
         panel.id = 'workflow-panel';
@@ -4661,6 +5160,7 @@
                 <span class="wf-version">v${GM_info.script.version}</span>
             </div>
             <div class="wf-header-btns">
+                <button class="wf-header-btn" id="settings-btn" title="助手设置">⚙</button>
                 <button class="wf-header-btn wf-update-btn" id="update-check-btn">
                     更新
                     <span class="wf-update-dot" id="update-dot" style="display:none;"></span>
@@ -5009,12 +5509,163 @@
         updateModal.onclick = (e) => { if (e.target === updateModal) updateModal.style.display = 'none'; };
         updateModal.querySelector('#update-modal-close').onclick = () => { updateModal.style.display = 'none'; };
 
+        // 创建设置模态框（助手设置入口）
+        const settingsModal = document.createElement('div');
+        settingsModal.id = 'settings-modal';
+        settingsModal.className = 'wf-modal';
+        // 遮罩刻意比其他模态框浅：设置以实时预览面板透明效果为主，避免深色遮罩干扰观察
+        settingsModal.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100002;background:rgba(0,0,0,0.15);align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+        settingsModal.innerHTML = `
+        <div class="wf-modal-dialog" style="background:var(--wf-surface);border-radius:var(--wf-radius-xl);box-shadow:0 20px 60px rgba(0,0,0,0.2);padding:24px;min-width:340px;max-width:420px;animation:wfModalFadeIn 0.15s ease-out;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <div style="font-size:15px;font-weight:600;color:var(--wf-text);">⚙ 助手设置</div>
+                <button id="settings-close" style="width:24px;height:24px;border:none;background:var(--wf-surface-muted);border-radius:var(--wf-radius-md);cursor:pointer;font-size:14px;color:var(--wf-text-muted);display:flex;align-items:center;justify-content:center;">×</button>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;background:var(--wf-surface-3);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-border-muted);">
+                <div>
+                    <div style="font-size:13px;font-weight:500;color:var(--wf-text-heading);">执行时面板半透明</div>
+                    <div style="font-size:11px;color:var(--wf-text-muted);margin-top:2px;">执行期间便于观察面板下方页面</div>
+                </div>
+                <div class="wf-settings-toggle" id="transparent-run-toggle" title="开关：执行时面板半透明"></div>
+            </div>
+            <div id="settings-opacity-row" style="display:flex;align-items:center;gap:10px;margin-top:10px;padding:12px;background:var(--wf-surface-3);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-border-muted);">
+                <span style="font-size:12px;color:var(--wf-text-secondary);flex-shrink:0;">透明度</span>
+                <input type="range" id="settings-opacity-slider" min="0.3" max="0.9" step="0.05" style="flex:1;accent-color:var(--wf-primary);cursor:pointer;">
+                <span id="settings-opacity-value" style="font-size:12px;color:var(--wf-text-secondary);min-width:34px;text-align:right;flex-shrink:0;">45%</span>
+            </div>
+            <div style="font-size:11px;color:var(--wf-text-muted);margin-top:12px;line-height:1.5;">
+                💡 开启后，从点击「开始」到执行结束（含步骤间隙、跨页导航）面板保持半透明；鼠标悬停面板可临时恢复不透明。设置即时生效并保存。
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding:12px;background:var(--wf-surface-3);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-border-muted);">
+                <div>
+                    <div style="font-size:13px;font-weight:500;color:var(--wf-text-heading);">页面刷新时自动匹配工作流</div>
+                    <div style="font-size:11px;color:var(--wf-text-muted);margin-top:2px;">刷新后若空闲，自动按 URL 切换到匹配的工作流</div>
+                </div>
+                <div class="wf-settings-toggle" id="automatch-onload-toggle" title="开关：页面刷新时自动匹配工作流"></div>
+            </div>
+            <div style="font-size:11px;color:var(--wf-text-muted);margin-top:12px;line-height:1.5;">
+                💡 仅在空闲时生效：执行中或等待手动操作时刷新页面会优先恢复断点续跑，不会切换工作流。设置即时生效并保存。
+            </div>
+        </div>
+    `;
+        document.body.appendChild(settingsModal);
+
+        // 模态框通用开关样式（设置弹窗与上传管理弹窗共用，均在 body 下、不受 #workflow-panel 作用域覆盖）
+        const settingsStyles = document.createElement('style');
+        settingsStyles.textContent = `
+        .wf-modal .wf-settings-toggle {
+            position: relative;
+            width: 36px;
+            height: 20px;
+            background: var(--wf-border-strong);
+            border-radius: var(--wf-radius-pill);
+            cursor: pointer;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+        .wf-modal .wf-settings-toggle::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            transition: left 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .wf-modal .wf-settings-toggle.on {
+            background: var(--wf-success);
+        }
+        .wf-modal .wf-settings-toggle.on::after {
+            left: 18px;
+        }
+    `;
+        document.head.appendChild(settingsStyles);
+
+        // 同步设置弹窗控件状态
+        function syncSettingsModalUI() {
+            const toggleEl = settingsModal.querySelector('#transparent-run-toggle');
+            const sliderRow = settingsModal.querySelector('#settings-opacity-row');
+            const slider = settingsModal.querySelector('#settings-opacity-slider');
+            const valueLabel = settingsModal.querySelector('#settings-opacity-value');
+            toggleEl.classList.toggle('on', panelSettings.transparentRun);
+            sliderRow.style.display = panelSettings.transparentRun ? 'flex' : 'none';
+            slider.value = panelSettings.runOpacity;
+            valueLabel.textContent = Math.round(panelSettings.runOpacity * 100) + '%';
+            const autoMatchToggle = settingsModal.querySelector('#automatch-onload-toggle');
+            autoMatchToggle.classList.toggle('on', panelSettings.autoMatchOnLoad);
+        }
+
+        function showSettingsModal() {
+            syncSettingsModalUI();
+            settingsModal.style.display = 'flex';
+            // 预览模式：无视执行状态直接应用半透明，调整滑块即时可见
+            setPreviewMode(true);
+            updateUI();
+        }
+
+        function closeSettingsModal() {
+            settingsModal.style.display = 'none';
+            setPreviewMode(false);
+            updateUI();
+        }
+
+        settingsModal.onclick = (e) => { if (e.target === settingsModal) closeSettingsModal(); };
+        settingsModal.querySelector('#settings-close').onclick = () => { closeSettingsModal(); };
+
+        // 透明运行开关：切换后立即生效（含正在执行的场景）
+        settingsModal.querySelector('#transparent-run-toggle').onclick = () => {
+            setPanelSetting('transparentRun', !panelSettings.transparentRun);
+            syncSettingsModalUI();
+            updateUI();
+        };
+
+        // 透明度滑块：拖动即时预览并保存
+        settingsModal.querySelector('#settings-opacity-slider').oninput = (e) => {
+            const value = parseFloat(e.target.value);
+            setPanelSetting('runOpacity', value);
+            settingsModal.querySelector('#settings-opacity-value').textContent = Math.round(value * 100) + '%';
+        };
+
+        // 页面刷新自动匹配开关：切换后立即保存，下次页面加载起生效
+        settingsModal.querySelector('#automatch-onload-toggle').onclick = () => {
+            setPanelSetting('autoMatchOnLoad', !panelSettings.autoMatchOnLoad);
+            syncSettingsModalUI();
+        };
+
+        // 创建上传管理模态框（upload 动作 🗃️ 按钮入口），先移除旧的避免重复
+        const oldManageModal = document.getElementById('upload-manage-modal');
+        if (oldManageModal) oldManageModal.remove();
+        const uploadManageModal = document.createElement('div');
+        uploadManageModal.id = 'upload-manage-modal';
+        uploadManageModal.className = 'wf-modal';
+        uploadManageModal.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:100002;background:var(--wf-overlay);align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+        uploadManageModal.innerHTML = `
+        <div class="wf-modal-dialog" style="background:var(--wf-surface);border-radius:var(--wf-radius-xl);box-shadow:0 20px 60px rgba(0,0,0,0.2);padding:24px;min-width:400px;max-width:480px;animation:wfModalFadeIn 0.15s ease-out;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:10px;">
+                <div style="min-width:0;">
+                    <div style="font-size:15px;font-weight:600;color:var(--wf-text);">🗃️ 上传文件管理</div>
+                    <div id="upload-manage-context" style="font-size:11px;color:var(--wf-text-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+                </div>
+                <button id="upload-manage-close" style="width:24px;height:24px;border:none;background:var(--wf-surface-muted);border-radius:var(--wf-radius-md);cursor:pointer;font-size:14px;color:var(--wf-text-muted);display:flex;align-items:center;justify-content:center;flex-shrink:0;">×</button>
+            </div>
+            <div id="upload-manage-body"></div>
+        </div>`;
+        document.body.appendChild(uploadManageModal);
+        uploadManageModal.onclick = (e) => { if (e.target === uploadManageModal) closeUploadManageModal(); };
+        uploadManageModal.querySelector('#upload-manage-close').onclick = () => { closeUploadManageModal(); };
+
         // 显示更新模态框
         function showUpdateModal() {
             updateModal.style.display = 'flex';
             // 重置状态
             document.getElementById('script-update-status').innerHTML = '<div style="text-align:center;padding:20px;color:var(--wf-text-muted);">点击下方按钮检查更新</div>';
             document.getElementById('workflow-update-status').innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--wf-text-muted);">点击「刷新」按钮获取云端工作流</div>';
+            // 打开弹窗时默认自动检查一次脚本更新，免去手动点击
+            // manualCheckUpdate 无检查间隔限制，每次打开都拉取最新版本信息
+            checkScriptUpdate();
         }
 
         // 检查脚本更新
@@ -5039,7 +5690,7 @@
                     <div style="padding:12px;background:var(--wf-primary-light);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-primary-border);margin-bottom:16px;">
                         <div style="font-size:13px;font-weight:600;color:var(--wf-primary-darker);margin-bottom:6px;">📝 更新内容：</div>
                         ${result.updatedAt ? `<div style="font-size:12px;color:var(--wf-success);margin-bottom:6px;">更新于 ${result.updatedAt}</div>` : ''}
-                        <div style="font-size:13px;color:var(--wf-primary-text);white-space:pre-line;">${result.changelog || '详见更新日志'}</div>
+                        <div style="font-size:13px;color:var(--wf-primary-text);white-space:pre-line;max-height:300px;overflow-y:auto;line-height:1.5;">${result.changelog || '详见更新日志'}</div>
                     </div>
 
                     <div style="display:flex;justify-content:center;gap:10px;">
@@ -5205,19 +5856,33 @@
                     const buttonColor = wf.hasUpdate ? 'var(--wf-success-accent)' : 'var(--wf-primary)';
                     const rowStyle = wf.hasUpdate ? 'background:var(--wf-success-light);border-color:var(--wf-success-border);' : '';
 
+                    // 是否展开 changelog（默认折叠）
+                    const changelogId = `changelog-${wf.name.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                    const hasChangelog = !!wf.changelog;
+
                     return `
-                    <div style="display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:8px;border-radius:var(--wf-radius-lg);border:1px solid var(--wf-border);${rowStyle}">
-                        <div style="flex:1;min-width:0;">
-                            <div style="font-size:14px;font-weight:600;color:var(--wf-text);margin-bottom:4px;">${escapeHtml(wf.name)}</div>
-                            <div style="font-size:12px;color:var(--wf-text-muted);">
-                                云端 v${wf.version}${wf.localVersion ? ` | 本地 v${wf.localVersion}` : ''}${wf.updatedAt ? `<span style="color:var(--wf-success);"> | 更新于 ${escapeHtml(wf.updatedAt)}</span>` : ''}
+                    <div style="display:flex;flex-direction:column;gap:8px;padding:12px;margin-bottom:8px;border-radius:var(--wf-radius-lg);border:1px solid var(--wf-border);${rowStyle}">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-size:14px;font-weight:600;color:var(--wf-text);margin-bottom:4px;">${escapeHtml(wf.name)}</div>
+                                <div style="font-size:12px;color:var(--wf-text-muted);">
+                                    云端 v${wf.version}${wf.localVersion ? ` | 本地 v${wf.localVersion}` : ''}${wf.updatedAt ? `<span style="color:var(--wf-success);"> | 更新于 ${escapeHtml(wf.updatedAt)}</span>` : ''}
+                                </div>
                             </div>
-                            ${wf.changelog ? `<div style="font-size:12px;color:var(--wf-text-secondary);margin-top:4px;white-space:pre-line;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(wf.changelog)}</div>` : ''}
+                            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
+                                <span style="font-size:12px;padding:2px 8px;border-radius:var(--wf-radius-sm);background:${statusColor}20;color:${statusColor};border:1px solid ${statusColor}40;">${statusText}</span>
+                                <button class="download-workflow-btn" data-name="${escapeHtml(wf.name)}" style="padding:6px 14px;border:none;background:${buttonColor};color:white;border-radius:var(--wf-radius-md);font-size:12px;font-weight:500;cursor:pointer;transition:background 0.15s;white-space:nowrap;">${buttonText}</button>
+                            </div>
                         </div>
-                        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
-                            <span style="font-size:12px;padding:2px 8px;border-radius:var(--wf-radius-sm);background:${statusColor}20;color:${statusColor};border:1px solid ${statusColor}40;">${statusText}</span>
-                            <button class="download-workflow-btn" data-name="${escapeHtml(wf.name)}" style="padding:6px 14px;border:none;background:${buttonColor};color:white;border-radius:var(--wf-radius-md);font-size:12px;font-weight:500;cursor:pointer;transition:background 0.15s;white-space:nowrap;">${buttonText}</button>
+                        ${hasChangelog ? `
+                        <div style="border-top:1px solid var(--wf-border-muted);padding-top:8px;">
+                            <div class="wf-changelog-toggle" data-target="${changelogId}" style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
+                                <span style="font-size:12px;font-weight:500;color:var(--wf-text-secondary);">更新日志</span>
+                                <span class="toggle-icon" style="font-size:10px;color:var(--wf-text-muted);transition:transform 0.2s;">▼</span>
+                            </div>
+                            <div id="${changelogId}" style="display:none;font-size:12px;color:var(--wf-text-secondary);margin-top:6px;white-space:pre-line;max-height:200px;overflow-y:auto;line-height:1.5;padding:8px;background:var(--wf-surface-muted);border-radius:var(--wf-radius-md);">${escapeHtml(wf.changelog)}</div>
                         </div>
+                        ` : ''}
                     </div>
                 `;
                 }).join('');
@@ -5235,6 +5900,20 @@
                     if (dot) dot.style.display = 'none';
                     window.wfWorkflowUpdate = false;
                 }
+
+                // 绑定 changelog 折叠/展开事件
+                statusEl.querySelectorAll('.wf-changelog-toggle').forEach(toggle => {
+                    toggle.onclick = () => {
+                        const targetId = toggle.dataset.target;
+                        const content = document.getElementById(targetId);
+                        const icon = toggle.querySelector('.toggle-icon');
+                        if (content && icon) {
+                            const isVisible = content.style.display !== 'none';
+                            content.style.display = isVisible ? 'none' : 'block';
+                            icon.style.transform = isVisible ? 'rotate(0deg)' : 'rotate(180deg)';
+                        }
+                    };
+                });
 
                 // 绑定下载按钮事件
                 statusEl.querySelectorAll('.download-workflow-btn').forEach(btn => {
@@ -5357,6 +6036,7 @@
         document.getElementById('desc-btn').onclick = () => { showDescription(); };
         document.getElementById('vars-btn').onclick = () => { openVisualEditor('variables'); };
         document.getElementById('update-check-btn').onclick = () => { showUpdateModal(); };
+        document.getElementById('settings-btn').onclick = () => { showSettingsModal(); };
         document.getElementById('check-script-update-btn').onclick = () => { checkScriptUpdate(); };
         document.getElementById('refresh-workflow-list-btn').onclick = () => { loadRemoteWorkflows(); };
         document.getElementById('continue-btn').onclick = () => { resumeAfterUserAction(); };
@@ -5540,6 +6220,19 @@
         if (shouldAutoResume) {
             addLog(`页面加载完成，自动恢复执行... (步骤${currentStepIndex + 1})`, 'info');
             scheduleAutoContinue(1000);
+        } else {
+            if (autoMatchPending) {
+                // 工作流完成后整页跳转的场景：url-monitor 监听不到整页导航，在此消费待匹配标记。
+                // 该标记来自工作流自身的 autoMatchOnComplete 配置（显式按工作流开启），不受全局开关控制。
+                addLog(`→ 检测到待匹配标记，页面加载后执行自动匹配（当前 URL: ${location.href}）`, 'info');
+                setAutoMatchPending(false);
+                saveState();
+                autoMatchWorkflow(true);
+            } else if (panelSettings.autoMatchOnLoad) {
+                // 空闲状态（未在执行任务）且开启「页面刷新时自动匹配」：页面加载后自动按 URL 匹配工作流。
+                // 执行中/暂停中刷新页面时 shouldAutoResume 为 true 走上方续跑分支，不会误触发匹配。
+                autoMatchWorkflow(true);
+            }
         }
     }
 
@@ -5552,6 +6245,16 @@
         const progressText = document.getElementById('progress-text');
         const startBtn = document.getElementById('start-btn');
         const stepList = document.getElementById('step-list');
+
+        // 执行中给面板挂 running class：整体半透明，便于观察下方页面（悬停恢复，见 styles.js）
+        // 注意：不能用 isRunning —— 自动继续模式下每个步骤结束后 isRunning 会被置回 false
+        //（engine.js 的 executeWorkflow 在步骤间隙 break 出循环），会导致面板在步骤间闪烁。
+        // autoContinue 才是"从点开始到完成/停止/重置"的会话状态，且随 saveState 持久化、
+        // 跨页面导航后会在本函数首次调用前恢复，面板可保持透明不闪烁。
+        // previewMode：设置弹窗打开期间强制展示半透明效果，方便调整透明度时实时预览。
+        const panelEl = document.getElementById('workflow-panel');
+        if (panelEl) panelEl.classList.toggle('running',
+            panelSettings.transparentRun && (isRunning || autoContinue || previewMode));
 
         if (!workflow || workflow.steps.length === 0) return;
 
@@ -5671,11 +6374,16 @@
                         waitToggleHtml = `<div class="wf-toggle wf-toggle-manual ${runtimeWaitUser ? 'active' : ''}" data-wait-step="${stepIndex}" data-wait-action="${actionIndex}" title="${runtimeWaitUser ? '手动模式：点击切换为自动' : '自动模式：点击切换为手动'}">🖐</div>`;
                     }
 
-                    // 缓存开关 - 仅上传动作（默认启用缓存；点亮=缓存已启用，关闭时暗淡，参考手动开关样式）
-                    let cacheToggleHtml = '';
+                    // 上传管理按钮 - 仅上传动作：点击打开弹窗，管理云端缓存与手动上传文件
+                    // 点亮条件：已绑定手动文件，或该动作的 URL 已有云端缓存（任一存在即激活）
+                    let uploadBtnHtml = '';
                     if (actionType === 'upload') {
-                        const cacheEnabled = getEffectiveActionCache(stepIndex, actionIndex);
-                        cacheToggleHtml = `<div class="wf-toggle wf-toggle-cache ${cacheEnabled ? 'active' : ''}" data-cache-step="${stepIndex}" data-cache-action="${actionIndex}" title="${cacheEnabled ? '缓存已启用：点击禁用（强制重新拉取云端文件）' : '缓存已禁用：点击启用缓存'}">🗃️</div>`;
+                        const manual = getManualFile(manualSlotKey(activeWorkflowId, action, stepIndex, actionIndex));
+                        const variables = Object.assign({}, workflow.variables, runtimeVariables);
+                        const url = action.url ? replaceVariables(action.url, variables) : '';
+                        const hasCache = !!(url && getUploadCache()[url]);
+                        const uploadTitle = `手动文件: ${manual ? manual.name : '无'} | 云端缓存: ${hasCache ? '已缓存' : '无'}\n点击管理缓存与手动上传文件`;
+                        uploadBtnHtml = `<div class="wf-toggle wf-toggle-upload ${(manual || hasCache) ? 'active' : ''}" data-upload-step="${stepIndex}" data-upload-action="${actionIndex}" title="${uploadTitle}">🗃️</div>`;
                     }
 
                     // Bypass toggle - 启用开关
@@ -5729,7 +6437,7 @@
                             </div>
                             ${actionMeta ? `<div class="wf-action-meta">${actionMeta}</div>` : ''}
                         </div>
-                        ${highlightHtml}${valueEditHtml}${waitToggleHtml}${cacheToggleHtml}${bypassToggleHtml}${jumpHtml}
+                        ${highlightHtml}${valueEditHtml}${waitToggleHtml}${uploadBtnHtml}${bypassToggleHtml}${jumpHtml}
                         ${connectorHtml}
                     </div>
                 `;
@@ -5825,19 +6533,11 @@
                 };
             });
 
-            // 缓存开关 - 上传动作
-            stepList.querySelectorAll('.wf-toggle.wf-toggle-cache[data-cache-step]').forEach(toggle => {
+            // 上传管理按钮 - 打开缓存/手动文件管理弹窗
+            stepList.querySelectorAll('.wf-toggle-upload[data-upload-step]').forEach(toggle => {
                 toggle.onclick = (e) => {
                     e.stopPropagation();
-                    const stepIndex = parseInt(toggle.dataset.cacheStep);
-                    const actionIndex = parseInt(toggle.dataset.cacheAction);
-                    const action = workflow.steps[stepIndex].actions[actionIndex];
-                    const currentVal = getEffectiveActionCache(stepIndex, actionIndex);
-                    const newVal = !currentVal;
-                    setActionOverride(activeWorkflowId, stepIndex, actionIndex, 'cache', newVal);
-                    saveState();
-                    updateUI();
-                    addLog(`已${newVal ? '启用' : '禁用'}缓存: ${action.description || action.type}`, 'info');
+                    openUploadManageModal(parseInt(toggle.dataset.uploadStep), parseInt(toggle.dataset.uploadAction));
                 };
             });
 
@@ -6185,6 +6885,138 @@
             panel.style.right = newRight + 'px';
             panel.style.top = newTop + 'px';
         });
+    }
+
+    // ============================================
+    // 上传管理弹窗（upload 动作的 🗃️ 按钮）
+    // 管理该动作的手动上传文件与云端 URL 缓存，两者独立控制
+    // ============================================
+    let uploadManageTarget = null;
+
+    function openUploadManageModal(stepIndex, actionIndex) {
+        const modal = document.getElementById('upload-manage-modal');
+        if (!modal) return;
+        uploadManageTarget = { stepIndex, actionIndex };
+        renderUploadManageModal();
+        modal.style.display = 'flex';
+    }
+
+    function closeUploadManageModal() {
+        const modal = document.getElementById('upload-manage-modal');
+        if (modal) modal.style.display = 'none';
+        uploadManageTarget = null;
+    }
+
+    function renderUploadManageModal() {
+        const modal = document.getElementById('upload-manage-modal');
+        if (!modal || !uploadManageTarget) return;
+        const { stepIndex, actionIndex } = uploadManageTarget;
+        const step = workflow.steps[stepIndex];
+        const action = step?.actions[actionIndex];
+        if (!action) { closeUploadManageModal(); return; }
+
+        const slotKey = manualSlotKey(activeWorkflowId, action, stepIndex, actionIndex);
+        const manual = getManualFile(slotKey);
+        const cacheEnabled = getEffectiveActionCache(stepIndex, actionIndex);
+        // URL 展示用解析值（与执行器同口径：静态变量 + 运行时变量）
+        const variables = Object.assign({}, workflow.variables, runtimeVariables);
+        const url = action.url ? replaceVariables(action.url, variables) : '';
+        const cached = url ? getUploadCache()[url] : null;
+        const escTitle = (s) => escapeHtml(s).replace(/"/g, '&quot;');
+
+        modal.querySelector('#upload-manage-context').textContent =
+            `[${step.name || `步骤 ${stepIndex + 1}`}] ${action.description || 'upload'}`;
+
+        const sizeText = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
+
+        const manualSection = `
+        <div style="padding:12px;background:var(--wf-surface-3);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-border-muted);">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div style="flex:1;min-width:0;">
+                    ${manual ? `
+                    <div style="font-size:12px;font-weight:500;color:var(--wf-text-heading);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">📎 ${escapeHtml(manual.name)}</div>
+                    <div style="font-size:11px;color:var(--wf-text-muted);margin-top:2px;">${sizeText(manual.size || 0)} · ${new Date(manual.timestamp).toLocaleString()}</div>
+                    ` : `
+                    <div style="font-size:12px;color:var(--wf-text-faint);">未绑定本地文件</div>
+                    <div style="font-size:11px;color:var(--wf-text-muted);margin-top:2px;">绑定后执行时直接使用本地文件，不访问云端</div>
+                    `}
+                </div>
+                <button id="upload-manage-pick" style="padding:5px 10px;border:1px solid var(--wf-primary-border);background:var(--wf-primary-light);color:var(--wf-primary-darker);border-radius:var(--wf-radius-md);font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0;">${manual ? '替换文件' : '选择文件'}</button>
+                ${manual ? `<button id="upload-manage-remove" style="padding:5px 10px;border:1px solid var(--wf-error-accent);background:var(--wf-error-light);color:var(--wf-error);border-radius:var(--wf-radius-md);font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0;">移除</button>` : ''}
+            </div>
+        </div>`;
+
+        const cacheSection = `
+        <div style="padding:12px;background:var(--wf-surface-3);border-radius:var(--wf-radius-lg);border:1px solid var(--wf-border-muted);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:${url ? '8' : '0'}px;">
+                <div style="flex:1;font-size:12px;font-weight:500;color:var(--wf-text-heading);">URL 缓存 <span style="font-size:10px;font-weight:400;color:var(--wf-text-muted);">（${cacheEnabled ? '启用' : '禁用'}）</span></div>
+                <div class="wf-settings-toggle ${cacheEnabled ? 'on' : ''}" id="upload-manage-cache-toggle" title="${cacheEnabled ? '已启用：点击禁用（下次执行强制从云端重新拉取）' : '已禁用：点击启用缓存'}"></div>
+            </div>
+            ${url ? `
+            <div style="display:flex;align-items:center;gap:8px;">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:11px;color:var(--wf-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Consolas,monospace;" title="${escTitle(url)}">${escapeHtml(url)}</div>
+                    <div style="font-size:11px;color:${cached ? 'var(--wf-success)' : 'var(--wf-text-faint)'};margin-top:2px;">
+                        ${cached ? `✓ 已缓存（约 ${sizeText(cached.data.length * 0.75)} · ${new Date(cached.timestamp).toLocaleString()}）` : '未缓存，下次执行时从云端拉取'}
+                    </div>
+                </div>
+                ${cached ? `<button id="upload-manage-clear-cache" style="padding:5px 10px;border:1px solid var(--wf-border-strong);background:var(--wf-surface);color:var(--wf-text-secondary);border-radius:var(--wf-radius-md);font-size:11px;cursor:pointer;white-space:nowrap;flex-shrink:0;">清除缓存</button>` : ''}
+            </div>` : `
+            <div style="font-size:11px;color:var(--wf-text-faint);">未配置云端 URL</div>`}
+        </div>`;
+
+        modal.querySelector('#upload-manage-body').innerHTML = `
+        <div style="margin-bottom:14px;">
+            <div style="font-size:12px;font-weight:600;color:var(--wf-text-secondary);margin-bottom:6px;">手动文件 <span style="font-weight:400;color:var(--wf-text-faint);">（优先于云端）</span></div>
+            ${manualSection}
+        </div>
+        <div>
+            <div style="font-size:12px;font-weight:600;color:var(--wf-text-secondary);margin-bottom:6px;">云端缓存</div>
+            ${cacheSection}
+            <div style="font-size:11px;color:var(--wf-text-muted);margin-top:8px;line-height:1.5;">
+                💡 执行时文件来源优先级：手动文件 &gt; URL 缓存 &gt; 云端拉取。禁用或清除缓存后，下次执行将重新从云端获取。
+            </div>
+        </div>`;
+
+        modal.querySelector('#upload-manage-pick').onclick = () => {
+            const picker = document.getElementById('wf-manual-file-input');
+            if (!picker) return;
+            picker.dataset.fileStep = String(stepIndex);
+            picker.dataset.fileAction = String(actionIndex);
+            picker.value = '';
+            picker.click();
+        };
+
+        const removeBtn = modal.querySelector('#upload-manage-remove');
+        if (removeBtn) {
+            removeBtn.onclick = () => {
+                if (clearManualFile(slotKey)) {
+                    addLog(`📎 已移除手动文件: ${manual.name}`, 'info');
+                    renderUploadManageModal();
+                    updateUI();
+                }
+            };
+        }
+
+        modal.querySelector('#upload-manage-cache-toggle').onclick = () => {
+            const newVal = !getEffectiveActionCache(stepIndex, actionIndex);
+            setActionOverride(activeWorkflowId, stepIndex, actionIndex, 'cache', newVal);
+            saveState();
+            addLog(`已${newVal ? '启用' : '禁用'}缓存: ${action.description || action.type}`, 'info');
+            renderUploadManageModal();
+            updateUI();
+        };
+
+        const clearBtn = modal.querySelector('#upload-manage-clear-cache');
+        if (clearBtn) {
+            clearBtn.onclick = () => {
+                if (clearUploadCacheForUrl(url)) {
+                    addLog(`→ 已清除 URL 缓存: ${url}`, 'info');
+                    renderUploadManageModal();
+                    updateUI();
+                }
+            };
+        }
     }
 
     function observeUrlChange() {
